@@ -6,7 +6,7 @@ export class PsnApiError extends Error {
   constructor(
     message: string,
     public readonly status: number,
-    public readonly body?: unknown
+    public readonly body?: unknown,
   ) {
     super(message);
     this.name = "PsnApiError";
@@ -40,10 +40,13 @@ export class PsnHttpClient {
       headers: {
         Authorization: `Bearer ${accessToken}`,
         "Accept-Language": "en-US",
-        ...(options.body !== undefined ? { "Content-Type": "application/json" } : {}),
+        ...(options.body !== undefined
+          ? { "Content-Type": "application/json" }
+          : {}),
         ...options.headers,
       },
-      body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+      body:
+        options.body !== undefined ? JSON.stringify(options.body) : undefined,
     });
 
     if (!res.ok) {

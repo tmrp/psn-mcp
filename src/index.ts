@@ -14,7 +14,7 @@ async function main(): Promise<void> {
     console.error(
       "warning: PSN_NPSSO is not set - tools will fail until it is configured.\n" +
         "Sign in at https://www.playstation.com, then copy the token from " +
-        "https://ca.account.sony.com/api/v1/ssocookie"
+        "https://ca.account.sony.com/api/v1/ssocookie",
     );
   }
 

@@ -17,7 +17,10 @@ export const ALL_DEALS_CATEGORY_ID = "3f772501-f6f8-49b7-abac-874a88ca4897";
 const PAGE_SIZE = 24; // fixed by the store's category grid
 
 export class PsnStoreError extends Error {
-  constructor(message: string, public readonly status?: number) {
+  constructor(
+    message: string,
+    public readonly status?: number,
+  ) {
     super(message);
     this.name = "PsnStoreError";
   }
@@ -87,17 +90,25 @@ export class PsnStore {
       signal: AbortSignal.timeout(30_000),
     });
     if (!res.ok) {
-      throw new PsnStoreError(`PlayStation Store request to ${url} failed with HTTP ${res.status}`, res.status);
+      throw new PsnStoreError(
+        `PlayStation Store request to ${url} failed with HTTP ${res.status}`,
+        res.status,
+      );
     }
     const html = await res.text();
     const match = html.match(
-      /<script id="__NEXT_DATA__" type="application\/json">(.*?)<\/script>/s
+      /<script id="__NEXT_DATA__" type="application\/json">(.*?)<\/script>/s,
     );
     if (!match) {
-      throw new PsnStoreError(`Could not find embedded page data at ${url}; the store layout may have changed.`);
+      throw new PsnStoreError(
+        `Could not find embedded page data at ${url}; the store layout may have changed.`,
+      );
     }
     const data = JSON.parse(match[1]) as {
-      props?: { apolloState?: ApolloState; pageProps?: Record<string, unknown> };
+      props?: {
+        apolloState?: ApolloState;
+        pageProps?: Record<string, unknown>;
+      };
     };
     const title = html.match(/<title>([^<]*)<\/title>/)?.[1];
     return {
@@ -109,15 +120,16 @@ export class PsnStore {
 
   private toStoreItem(entity: ApolloEntity): StoreItem {
     const price = entity.price as StorePrice | undefined;
-    const media = entity.media as Array<{ type: string; url: string; role: string }> | undefined;
-    const image = media?.find((m) => m.type === "IMAGE" && m.role === "MASTER") ??
+    const media = entity.media as
+      Array<{ type: string; url: string; role: string }> | undefined;
+    const image =
+      media?.find((m) => m.type === "IMAGE" && m.role === "MASTER") ??
       media?.find((m) => m.type === "IMAGE");
     return {
       productId: String(entity.id ?? ""),
       name: String(entity.name ?? ""),
-      type: (entity.localizedStoreDisplayClassification ?? entity.storeDisplayClassification) as
-        | string
-        | undefined,
+      type: (entity.localizedStoreDisplayClassification ??
+        entity.storeDisplayClassification) as string | undefined,
       platforms: entity.platforms as string[] | undefined,
       price: price && {
         basePrice: price.basePrice,
@@ -131,23 +143,33 @@ export class PsnStore {
   }
 
   /** One page (24 items) of a store category grid, e.g. the "All deals" category. */
-  async getCategoryGrid(categoryId: string, page = 1): Promise<CategoryGridPage> {
+  async getCategoryGrid(
+    categoryId: string,
+    page = 1,
+  ): Promise<CategoryGridPage> {
     const { apollo, title } = await this.fetchNextData(
-      `/category/${encodeURIComponent(categoryId)}/${page}`
+      `/category/${encodeURIComponent(categoryId)}/${page}`,
     );
 
-    const grid = Object.entries(apollo).find(([key]) => key.startsWith("CategoryGrid:"))?.[1];
+    const grid = Object.entries(apollo).find(([key]) =>
+      key.startsWith("CategoryGrid:"),
+    )?.[1];
     if (!grid) {
       throw new PsnStoreError(
         `No category grid found for category ${categoryId} (page ${page}). ` +
-          "The category id may be invalid or the page out of range."
+          "The category id may be invalid or the page out of range.",
       );
     }
 
     // The grid lists products as Apollo refs; resolve them in grid order.
-    const refs = (grid.products as Array<{ __ref?: string } | ApolloEntity>) ?? [];
+    const refs =
+      (grid.products as Array<{ __ref?: string } | ApolloEntity>) ?? [];
     const items = refs
-      .map((ref) => ("__ref" in ref && typeof ref.__ref === "string" ? apollo[ref.__ref] : ref))
+      .map((ref) =>
+        "__ref" in ref && typeof ref.__ref === "string"
+          ? apollo[ref.__ref]
+          : ref,
+      )
       .filter((p): p is ApolloEntity => Boolean(p && (p as ApolloEntity).id))
       .map((p) => this.toStoreItem(p));
 
@@ -165,15 +187,19 @@ export class PsnStore {
   /** Product details including price and the community star rating. */
   async getProduct(productId: string): Promise<StoreProduct> {
     const { apollo, pageProps } = await this.fetchNextData(
-      `/product/${encodeURIComponent(productId)}`
+      `/product/${encodeURIComponent(productId)}`,
     );
 
-    const entity = apollo[`Product:${productId}`] ??
+    const entity =
+      apollo[`Product:${productId}`] ??
       Object.entries(apollo).find(
-        ([key, value]) => key.startsWith("Product:") && value.__typename === "Product"
+        ([key, value]) =>
+          key.startsWith("Product:") && value.__typename === "Product",
       )?.[1];
     if (!entity) {
-      throw new PsnStoreError(`Product ${productId} not found on the PlayStation Store.`);
+      throw new PsnStoreError(
+        `Product ${productId} not found on the PlayStation Store.`,
+      );
     }
 
     return {
@@ -189,11 +215,10 @@ export class PsnStore {
    */
   private extractStarRating(
     pageProps: Record<string, unknown>,
-    productId: string
+    productId: string,
   ): StarRating | undefined {
     const batarangs = pageProps.batarangs as
-      | Record<string, { text?: string }>
-      | undefined;
+      Record<string, { text?: string }> | undefined;
     const text = batarangs?.["star-rating"]?.text;
     if (!text) return undefined;
 
@@ -205,7 +230,7 @@ export class PsnStore {
       const cached =
         payload.cache?.[`Product:${productId}`] ??
         Object.values(payload.cache ?? {}).find(
-          (v) => v.__typename === "Product" && v.starRating
+          (v) => v.__typename === "Product" && v.starRating,
         );
       const rating = cached?.starRating as
         | {
@@ -218,10 +243,12 @@ export class PsnStore {
       return {
         averageRating: rating.averageRating,
         totalRatingsCount: rating.totalRatingsCount ?? 0,
-        ratingsDistribution: rating.ratingsDistribution?.map(({ rating: r, percentage }) => ({
-          rating: r,
-          percentage,
-        })),
+        ratingsDistribution: rating.ratingsDistribution?.map(
+          ({ rating: r, percentage }) => ({
+            rating: r,
+            percentage,
+          }),
+        ),
       };
     } catch {
       return undefined;
@@ -230,11 +257,15 @@ export class PsnStore {
 
   /** Search the store catalog (games, add-ons, bundles) by name. */
   async search(term: string): Promise<StoreItem[]> {
-    const { apollo } = await this.fetchNextData(`/search/${encodeURIComponent(term)}`);
+    const { apollo } = await this.fetchNextData(
+      `/search/${encodeURIComponent(term)}`,
+    );
     return Object.entries(apollo)
       .filter(
         ([key, value]) =>
-          key.startsWith("Product:") && value.__typename === "Product" && value.name
+          key.startsWith("Product:") &&
+          value.__typename === "Product" &&
+          value.name,
       )
       .map(([, value]) => this.toStoreItem(value));
   }
@@ -246,8 +277,10 @@ export class PsnStore {
   async getDeals(
     page = 1,
     includeRatings = false,
-    categoryId = ALL_DEALS_CATEGORY_ID
-  ): Promise<CategoryGridPage & { items: Array<StoreItem & { starRating?: StarRating }> }> {
+    categoryId = ALL_DEALS_CATEGORY_ID,
+  ): Promise<
+    CategoryGridPage & { items: Array<StoreItem & { starRating?: StarRating }> }
+  > {
     const grid = await this.getCategoryGrid(categoryId, page);
     if (!includeRatings) return grid;
 
@@ -266,16 +299,19 @@ export class PsnStore {
 async function mapWithConcurrency<T, R>(
   inputs: readonly T[],
   concurrency: number,
-  fn: (input: T) => Promise<R>
+  fn: (input: T) => Promise<R>,
 ): Promise<R[]> {
   const results = new Array<R>(inputs.length);
   let next = 0;
-  const workers = Array.from({ length: Math.min(concurrency, inputs.length) }, async () => {
-    while (next < inputs.length) {
-      const index = next++;
-      results[index] = await fn(inputs[index]);
-    }
-  });
+  const workers = Array.from(
+    { length: Math.min(concurrency, inputs.length) },
+    async () => {
+      while (next < inputs.length) {
+        const index = next++;
+        results[index] = await fn(inputs[index]);
+      }
+    },
+  );
   await Promise.all(workers);
   return results;
 }

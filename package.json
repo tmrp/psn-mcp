@@ -17,6 +17,10 @@
     "prepublishOnly": "tsc",
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
+    "lint": "prettier --check .",
+    "lint:fix": "prettier --write .",
+    "test": "node --import tsx --test tests/*.test.ts",
+    "test:runtime": "node scripts/runtime-smoke.mjs",
     "typecheck": "tsc --noEmit",
     "version:packages": "changeset version && pnpm install --lockfile-only && prettier --write \"**/CHANGELOG.md\"",
     "release": "changeset publish"
@@ -36,6 +40,7 @@
     "@changesets/changelog-github": "^0.7.0",
     "@changesets/cli": "^2.31.0",
     "@types/node": "^22.0.0",
+    "prettier": "^3.5.0",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0"
   },

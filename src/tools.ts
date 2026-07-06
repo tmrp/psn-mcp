@@ -6,18 +6,20 @@ import { ALL_DEALS_CATEGORY_ID, type PsnStore } from "./psn/store.js";
 const userParam = z
   .string()
   .describe(
-    'PSN user: "me" for the authenticated account, a PSN online id (username), or a numeric account id.'
+    'PSN user: "me" for the authenticated account, a PSN online id (username), or a numeric account id.',
   );
 
 const npServiceNameParam = z
   .enum(["trophy", "trophy2"])
   .describe(
     'Trophy service: "trophy2" for PS5/PS VR2 titles, "trophy" for PS4 and earlier. ' +
-      "Use the npServiceName reported by psn_get_trophy_titles."
+      "Use the npServiceName reported by psn_get_trophy_titles.",
   );
 
 function jsonResult(data: unknown) {
-  return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] };
+  return {
+    content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }],
+  };
 }
 
 function errorResult(error: unknown) {
@@ -36,7 +38,11 @@ function handle<A>(fn: (args: A) => Promise<unknown>) {
   };
 }
 
-export function registerTools(server: McpServer, psn: PsnApi, store: PsnStore): void {
+export function registerTools(
+  server: McpServer,
+  psn: PsnApi,
+  store: PsnStore,
+): void {
   server.registerTool(
     "psn_get_profile",
     {
@@ -46,7 +52,9 @@ export function registerTools(server: McpServer, psn: PsnApi, store: PsnStore): 
         "languages, and PS Plus / verification status.",
       inputSchema: { user: userParam },
     },
-    handle(async ({ user }) => psn.getProfile(await psn.resolveAccountId(user)))
+    handle(async ({ user }) =>
+      psn.getProfile(await psn.resolveAccountId(user)),
+    ),
   );
 
   server.registerTool(
@@ -58,7 +66,13 @@ export function registerTools(server: McpServer, psn: PsnApi, store: PsnStore): 
         "account ids, and avatars. Useful for finding a user's account id.",
       inputSchema: {
         query: z.string().describe("Name or online id to search for."),
-        limit: z.number().int().min(1).max(50).default(20).describe("Max results."),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(50)
+          .default(20)
+          .describe("Max results."),
       },
     },
     handle(async ({ query, limit }) => {
@@ -74,7 +88,7 @@ export function registerTools(server: McpServer, psn: PsnApi, store: PsnStore): 
           avatarUrl: m!.avatarUrl,
           isPsPlus: m!.isPsPlus,
         }));
-    })
+    }),
   );
 
   server.registerTool(
@@ -86,8 +100,19 @@ export function registerTools(server: McpServer, psn: PsnApi, store: PsnStore): 
         "own are only visible if that user's privacy settings allow it.",
       inputSchema: {
         user: userParam.default("me"),
-        limit: z.number().int().min(1).max(500).default(50).describe("Max friends to return."),
-        offset: z.number().int().min(0).default(0).describe("Pagination offset."),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(500)
+          .default(50)
+          .describe("Max friends to return."),
+        offset: z
+          .number()
+          .int()
+          .min(0)
+          .default(0)
+          .describe("Pagination offset."),
       },
     },
     handle(async ({ user, limit, offset }) => {
@@ -98,18 +123,22 @@ export function registerTools(server: McpServer, psn: PsnApi, store: PsnStore): 
         friends.friends.map(async (id) => {
           try {
             const profile = await psn.getProfile(id);
-            return { accountId: id, onlineId: profile.onlineId, isPlus: profile.isPlus };
+            return {
+              accountId: id,
+              onlineId: profile.onlineId,
+              isPlus: profile.isPlus,
+            };
           } catch {
             return { accountId: id };
           }
-        })
+        }),
       );
       return {
         totalItemCount: friends.totalItemCount,
         nextOffset: friends.nextOffset,
         friends: profiles,
       };
-    })
+    }),
   );
 
   server.registerTool(
@@ -121,7 +150,9 @@ export function registerTools(server: McpServer, psn: PsnApi, store: PsnStore): 
         "platform (PS5/PS4), what game they are playing, and when they were last online.",
       inputSchema: { user: userParam.default("me") },
     },
-    handle(async ({ user }) => psn.getBasicPresence(await psn.resolveAccountId(user)))
+    handle(async ({ user }) =>
+      psn.getBasicPresence(await psn.resolveAccountId(user)),
+    ),
   );
 
   server.registerTool(
@@ -133,7 +164,9 @@ export function registerTools(server: McpServer, psn: PsnApi, store: PsnStore): 
         "level, and total bronze/silver/gold/platinum counts.",
       inputSchema: { user: userParam.default("me") },
     },
-    handle(async ({ user }) => psn.getTrophySummary(await psn.resolveAccountId(user)))
+    handle(async ({ user }) =>
+      psn.getTrophySummary(await psn.resolveAccountId(user)),
+    ),
   );
 
   server.registerTool(
@@ -146,13 +179,24 @@ export function registerTools(server: McpServer, psn: PsnApi, store: PsnStore): 
         "npCommunicationId and npServiceName for use with the trophy detail tools.",
       inputSchema: {
         user: userParam.default("me"),
-        limit: z.number().int().min(1).max(800).default(50).describe("Max titles to return."),
-        offset: z.number().int().min(0).default(0).describe("Pagination offset."),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(800)
+          .default(50)
+          .describe("Max titles to return."),
+        offset: z
+          .number()
+          .int()
+          .min(0)
+          .default(0)
+          .describe("Pagination offset."),
       },
     },
     handle(async ({ user, limit, offset }) =>
-      psn.getTrophyTitles(await psn.resolveAccountId(user), limit, offset)
-    )
+      psn.getTrophyTitles(await psn.resolveAccountId(user), limit, offset),
+    ),
   );
 
   server.registerTool(
@@ -170,14 +214,23 @@ export function registerTools(server: McpServer, psn: PsnApi, store: PsnStore): 
         trophyGroupId: z
           .string()
           .default("all")
-          .describe('Trophy group: "all", "default" (base game), or "001", "002"... for DLC.'),
+          .describe(
+            'Trophy group: "all", "default" (base game), or "001", "002"... for DLC.',
+          ),
         limit: z.number().int().min(1).max(500).default(200),
         offset: z.number().int().min(0).default(0),
       },
     },
-    handle(({ npCommunicationId, npServiceName, trophyGroupId, limit, offset }) =>
-      psn.getTitleTrophies(npCommunicationId, npServiceName, trophyGroupId, limit, offset)
-    )
+    handle(
+      ({ npCommunicationId, npServiceName, trophyGroupId, limit, offset }) =>
+        psn.getTitleTrophies(
+          npCommunicationId,
+          npServiceName,
+          trophyGroupId,
+          limit,
+          offset,
+        ),
+    ),
   );
 
   server.registerTool(
@@ -199,16 +252,24 @@ export function registerTools(server: McpServer, psn: PsnApi, store: PsnStore): 
         offset: z.number().int().min(0).default(0),
       },
     },
-    handle(async ({ user, npCommunicationId, npServiceName, trophyGroupId, limit, offset }) =>
-      psn.getEarnedTrophies(
-        await psn.resolveAccountId(user),
+    handle(
+      async ({
+        user,
         npCommunicationId,
         npServiceName,
         trophyGroupId,
         limit,
-        offset
-      )
-    )
+        offset,
+      }) =>
+        psn.getEarnedTrophies(
+          await psn.resolveAccountId(user),
+          npCommunicationId,
+          npServiceName,
+          trophyGroupId,
+          limit,
+          offset,
+        ),
+    ),
   );
 
   server.registerTool(
@@ -220,13 +281,24 @@ export function registerTools(server: McpServer, psn: PsnApi, store: PsnStore): 
         "played dates, and total play duration. Subject to the user's privacy settings.",
       inputSchema: {
         user: userParam.default("me"),
-        limit: z.number().int().min(1).max(200).default(50).describe("Max games to return."),
-        offset: z.number().int().min(0).default(0).describe("Pagination offset."),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(200)
+          .default(50)
+          .describe("Max games to return."),
+        offset: z
+          .number()
+          .int()
+          .min(0)
+          .default(0)
+          .describe("Pagination offset."),
       },
     },
     handle(async ({ user, limit, offset }) =>
-      psn.getPlayedGames(await psn.resolveAccountId(user), limit, offset)
-    )
+      psn.getPlayedGames(await psn.resolveAccountId(user), limit, offset),
+    ),
   );
 
   // ---- PlayStation Store (no PSN account required) -----------------------
@@ -242,20 +314,29 @@ export function registerTools(server: McpServer, psn: PsnApi, store: PsnStore): 
         "deals by review score. Returns 24 items per page; pass page to paginate. " +
         "Store region comes from the PSN_STORE_LOCALE env var (default en-us).",
       inputSchema: {
-        page: z.number().int().min(1).default(1).describe("Grid page (24 deals per page)."),
+        page: z
+          .number()
+          .int()
+          .min(1)
+          .default(1)
+          .describe("Grid page (24 deals per page)."),
         includeRatings: z
           .boolean()
           .default(false)
-          .describe("Also fetch each product's star rating (slower: one extra fetch per item)."),
+          .describe(
+            "Also fetch each product's star rating (slower: one extra fetch per item).",
+          ),
         categoryId: z
           .string()
           .default(ALL_DEALS_CATEGORY_ID)
-          .describe("Store category to browse; defaults to the \"All deals\" category."),
+          .describe(
+            'Store category to browse; defaults to the "All deals" category.',
+          ),
       },
     },
     handle(({ page, includeRatings, categoryId }) =>
-      store.getDeals(page, includeRatings, categoryId)
-    )
+      store.getDeals(page, includeRatings, categoryId),
+    ),
   );
 
   server.registerTool(
@@ -271,7 +352,7 @@ export function registerTools(server: McpServer, psn: PsnApi, store: PsnStore): 
         productId: z.string().describe("PlayStation Store product id."),
       },
     },
-    handle(({ productId }) => store.getProduct(productId))
+    handle(({ productId }) => store.getProduct(productId)),
   );
 
   server.registerTool(
@@ -285,6 +366,6 @@ export function registerTools(server: McpServer, psn: PsnApi, store: PsnStore): 
         query: z.string().describe("Game or product name to search for."),
       },
     },
-    handle(({ query }) => store.search(query))
+    handle(({ query }) => store.search(query)),
   );
 }

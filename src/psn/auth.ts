@@ -62,13 +62,15 @@ async function exchangeNpssoForCode(npsso: string): Promise<string> {
     throw new PsnAuthError(
       "Failed to obtain an authorization code from the NPSSO token. " +
         "The token is most likely expired or invalid - fetch a fresh one from " +
-        "https://ca.account.sony.com/api/v1/ssocookie while signed in to PlayStation."
+        "https://ca.account.sony.com/api/v1/ssocookie while signed in to PlayStation.",
     );
   }
 
   const code = new URL(location).searchParams.get("code");
   if (!code) {
-    throw new PsnAuthError("Authorization redirect did not contain a code parameter.");
+    throw new PsnAuthError(
+      "Authorization redirect did not contain a code parameter.",
+    );
   }
   return code;
 }
@@ -85,7 +87,9 @@ async function requestToken(body: URLSearchParams): Promise<TokenSet> {
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new PsnAuthError(`Token request failed with HTTP ${res.status}: ${text}`);
+    throw new PsnAuthError(
+      `Token request failed with HTTP ${res.status}: ${text}`,
+    );
   }
 
   const data = (await res.json()) as TokenResponse;
@@ -107,7 +111,7 @@ export async function authenticateWithNpsso(npsso: string): Promise<TokenSet> {
       redirect_uri: REDIRECT_URI,
       grant_type: "authorization_code",
       token_format: "jwt",
-    })
+    }),
   );
 }
 
@@ -118,7 +122,7 @@ export async function refreshTokens(refreshToken: string): Promise<TokenSet> {
       grant_type: "refresh_token",
       scope: SCOPE,
       token_format: "jwt",
-    })
+    }),
   );
 }
 
@@ -136,7 +140,7 @@ export class TokenManager {
       throw new PsnAuthError(
         "No NPSSO token configured. Set the PSN_NPSSO environment variable. " +
           "Sign in at https://www.playstation.com, then visit " +
-          "https://ca.account.sony.com/api/v1/ssocookie to copy your token."
+          "https://ca.account.sony.com/api/v1/ssocookie to copy your token.",
       );
     }
   }

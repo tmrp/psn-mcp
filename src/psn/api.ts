@@ -26,23 +26,29 @@ export class PsnApi {
 
   getProfile(accountId: string): Promise<UserProfile> {
     return this.http.request<UserProfile>(
-      `/userProfile/v1/internal/users/${encodeURIComponent(accountId)}/profiles`
+      `/userProfile/v1/internal/users/${encodeURIComponent(accountId)}/profiles`,
     );
   }
 
-  searchPlayers(searchTerm: string, limit = 20): Promise<UniversalSearchResponse> {
-    return this.http.request<UniversalSearchResponse>("/search/v1/universalSearch", {
-      method: "POST",
-      body: {
-        searchTerm,
-        domainRequests: [
-          {
-            domain: "SocialAllAccounts",
-            pagination: { cursor: "", pageSize: limit },
-          },
-        ],
+  searchPlayers(
+    searchTerm: string,
+    limit = 20,
+  ): Promise<UniversalSearchResponse> {
+    return this.http.request<UniversalSearchResponse>(
+      "/search/v1/universalSearch",
+      {
+        method: "POST",
+        body: {
+          searchTerm,
+          domainRequests: [
+            {
+              domain: "SocialAllAccounts",
+              pagination: { cursor: "", pageSize: limit },
+            },
+          ],
+        },
       },
-    });
+    );
   }
 
   /**
@@ -57,35 +63,44 @@ export class PsnApi {
     const search = await this.searchPlayers(trimmed, 20);
     const results = search.domainResponses[0]?.results ?? [];
     const match = results.find(
-      (r) => r.socialMetadata?.onlineId?.toLowerCase() === trimmed.toLowerCase()
+      (r) =>
+        r.socialMetadata?.onlineId?.toLowerCase() === trimmed.toLowerCase(),
     );
     if (!match?.socialMetadata?.accountId) {
       throw new Error(
         `No PSN user found with online id "${trimmed}". ` +
-          "Try psn_search_players to find the exact online id."
+          "Try psn_search_players to find the exact online id.",
       );
     }
     return match.socialMetadata.accountId;
   }
 
-  getFriends(accountId: string, limit = 100, offset = 0): Promise<FriendsResponse> {
+  getFriends(
+    accountId: string,
+    limit = 100,
+    offset = 0,
+  ): Promise<FriendsResponse> {
     return this.http.request<FriendsResponse>(
       `/userProfile/v1/internal/users/${encodeURIComponent(accountId)}/friends`,
-      { query: { limit, offset } }
+      { query: { limit, offset } },
     );
   }
 
-  getBasicPresence(accountId: string): Promise<{ basicPresence: BasicPresence }> {
+  getBasicPresence(
+    accountId: string,
+  ): Promise<{ basicPresence: BasicPresence }> {
     return this.http.request<{ basicPresence: BasicPresence }>(
       `/userProfile/v1/internal/users/${encodeURIComponent(accountId)}/basicPresences`,
-      { query: { type: "primary" } }
+      { query: { type: "primary" } },
     );
   }
 
-  getBasicPresences(accountIds: string[]): Promise<{ basicPresences: BasicPresence[] }> {
+  getBasicPresences(
+    accountIds: string[],
+  ): Promise<{ basicPresences: BasicPresence[] }> {
     return this.http.request<{ basicPresences: BasicPresence[] }>(
       "/userProfile/v1/internal/users/basicPresences",
-      { query: { type: "primary", accountIds: accountIds.join(",") } }
+      { query: { type: "primary", accountIds: accountIds.join(",") } },
     );
   }
 
@@ -93,14 +108,18 @@ export class PsnApi {
 
   getTrophySummary(accountId: string): Promise<TrophySummary> {
     return this.http.request<TrophySummary>(
-      `/trophy/v1/users/${encodeURIComponent(accountId)}/trophySummary`
+      `/trophy/v1/users/${encodeURIComponent(accountId)}/trophySummary`,
     );
   }
 
-  getTrophyTitles(accountId: string, limit = 100, offset = 0): Promise<TrophyTitlesResponse> {
+  getTrophyTitles(
+    accountId: string,
+    limit = 100,
+    offset = 0,
+  ): Promise<TrophyTitlesResponse> {
     return this.http.request<TrophyTitlesResponse>(
       `/trophy/v1/users/${encodeURIComponent(accountId)}/trophyTitles`,
-      { query: { limit, offset } }
+      { query: { limit, offset } },
     );
   }
 
@@ -110,12 +129,12 @@ export class PsnApi {
     npServiceName: NpServiceName,
     trophyGroupId = "all",
     limit = 200,
-    offset = 0
+    offset = 0,
   ): Promise<TrophiesResponse> {
     return this.http.request<TrophiesResponse>(
       `/trophy/v1/npCommunicationIds/${encodeURIComponent(npCommunicationId)}` +
         `/trophyGroups/${encodeURIComponent(trophyGroupId)}/trophies`,
-      { query: { npServiceName, limit, offset } }
+      { query: { npServiceName, limit, offset } },
     );
   }
 
@@ -126,19 +145,23 @@ export class PsnApi {
     npServiceName: NpServiceName,
     trophyGroupId = "all",
     limit = 200,
-    offset = 0
+    offset = 0,
   ): Promise<TrophiesResponse> {
     return this.http.request<TrophiesResponse>(
       `/trophy/v1/users/${encodeURIComponent(accountId)}` +
         `/npCommunicationIds/${encodeURIComponent(npCommunicationId)}` +
         `/trophyGroups/${encodeURIComponent(trophyGroupId)}/trophies`,
-      { query: { npServiceName, limit, offset } }
+      { query: { npServiceName, limit, offset } },
     );
   }
 
   // ---- Game library ------------------------------------------------------
 
-  getPlayedGames(accountId: string, limit = 50, offset = 0): Promise<PlayedGamesResponse> {
+  getPlayedGames(
+    accountId: string,
+    limit = 50,
+    offset = 0,
+  ): Promise<PlayedGamesResponse> {
     return this.http.request<PlayedGamesResponse>(
       `/gamelist/v2/users/${encodeURIComponent(accountId)}/titles`,
       {
@@ -147,7 +170,7 @@ export class PsnApi {
           limit,
           offset,
         },
-      }
+      },
     );
   }
 }
