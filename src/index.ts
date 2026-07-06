@@ -4,6 +4,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { TokenManager } from "./psn/auth.js";
 import { PsnHttpClient } from "./psn/http.js";
 import { PsnApi } from "./psn/api.js";
+import { PsnStore } from "./psn/store.js";
 import { registerTools } from "./tools.js";
 
 async function main(): Promise<void> {
@@ -20,9 +21,11 @@ async function main(): Promise<void> {
   // Auth is lazy: the token exchange happens on the first tool call, so the
   // server starts (and lists tools) even before credentials are configured.
   const psn = new PsnApi(new PsnHttpClient(new TokenManager(npsso || "unset")));
+  // Store browsing is public web data; no PSN account needed.
+  const store = new PsnStore(process.env.PSN_STORE_LOCALE ?? "en-us");
 
   const server = new McpServer({ name: "psn-mcp", version: "0.1.0" });
-  registerTools(server, psn);
+  registerTools(server, psn, store);
 
   await server.connect(new StdioServerTransport());
   console.error("psn-mcp server running on stdio");

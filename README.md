@@ -66,12 +66,22 @@ claude mcp add psn --env PSN_NPSSO=<your npsso token> -- npx -y psn-mcp
 | `psn_get_title_trophies`  | Full trophy list defined for a game (names, types, groups)         |
 | `psn_get_earned_trophies` | Which trophies a user earned in a game, with timestamps and rarity |
 | `psn_get_played_games`    | Played PS4/PS5 games with play counts and durations                |
+| `psn_get_store_deals`     | Games on sale, with prices, discounts, and (optional) star ratings |
+| `psn_get_store_product`   | Store product details: price, discount, and community star rating  |
+| `psn_search_store`        | Search the store catalog by name, with current prices              |
 
 Every user-scoped tool accepts `"me"` (the authenticated account), a PSN online
 id (username), or a numeric account id — online ids are resolved automatically.
 
 For PS5 titles pass `npServiceName: "trophy2"`; for PS4 and earlier use
 `"trophy"`. `psn_get_trophy_titles` reports the right value per game.
+
+The three `store` tools browse the public PlayStation Store and need **no PSN
+account**. They power prompts like _"give me the top 10 games currently on sale
+based on review score"_ — call `psn_get_store_deals` with `includeRatings: true`
+and rank by `starRating.averageRating`. Set `PSN_STORE_LOCALE` (e.g. `en-gb`,
+`de-de`, `ja-jp`) to change the store region and currency; the default is
+`en-us`.
 
 ## Architecture
 
@@ -83,8 +93,15 @@ src/
     auth.ts       NPSSO -> OAuth code -> access token exchange, auto-refresh
     http.ts       Authenticated JSON client for m.np.playstation.com
     api.ts        Typed endpoint wrappers (profiles, trophies, games, search)
+    store.ts      Public store catalog: deals, search, prices, star ratings
     types.ts      PSN API response types
 ```
+
+The store module works differently from the account API: the store's GraphQL
+endpoint only accepts Sony's whitelisted persisted queries, so it instead reads
+the Apollo state and star-rating payloads that the store server-renders into
+every page's `__NEXT_DATA__` blob. This needs no authentication but is
+inherently coupled to the store's page structure.
 
 Authentication is lazy: the server starts and lists tools without credentials;
 the token exchange happens on the first tool call. Access tokens are refreshed

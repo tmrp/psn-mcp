@@ -1,6 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { PsnApi } from "./psn/api.js";
+import { ALL_DEALS_CATEGORY_ID, type PsnStore } from "./psn/store.js";
 
 const userParam = z
   .string()
@@ -35,7 +36,7 @@ function handle<A>(fn: (args: A) => Promise<unknown>) {
   };
 }
 
-export function registerTools(server: McpServer, psn: PsnApi): void {
+export function registerTools(server: McpServer, psn: PsnApi, store: PsnStore): void {
   server.registerTool(
     "psn_get_profile",
     {
@@ -226,5 +227,64 @@ export function registerTools(server: McpServer, psn: PsnApi): void {
     handle(async ({ user, limit, offset }) =>
       psn.getPlayedGames(await psn.resolveAccountId(user), limit, offset)
     )
+  );
+
+  // ---- PlayStation Store (no PSN account required) -----------------------
+
+  server.registerTool(
+    "psn_get_store_deals",
+    {
+      title: "Get PlayStation Store deals",
+      description:
+        "List games currently on sale on the PlayStation Store, with base price, " +
+        "sale price, and discount percentage. Set includeRatings to also fetch each " +
+        "game's community star rating (0-5) and rating count - useful for ranking " +
+        "deals by review score. Returns 24 items per page; pass page to paginate. " +
+        "Store region comes from the PSN_STORE_LOCALE env var (default en-us).",
+      inputSchema: {
+        page: z.number().int().min(1).default(1).describe("Grid page (24 deals per page)."),
+        includeRatings: z
+          .boolean()
+          .default(false)
+          .describe("Also fetch each product's star rating (slower: one extra fetch per item)."),
+        categoryId: z
+          .string()
+          .default(ALL_DEALS_CATEGORY_ID)
+          .describe("Store category to browse; defaults to the \"All deals\" category."),
+      },
+    },
+    handle(({ page, includeRatings, categoryId }) =>
+      store.getDeals(page, includeRatings, categoryId)
+    )
+  );
+
+  server.registerTool(
+    "psn_get_store_product",
+    {
+      title: "Get PlayStation Store product",
+      description:
+        "Get a store product's details: current price, discount, platforms, and " +
+        "community star rating with rating count and distribution. Product ids look " +
+        'like "UP0006-PPSA27360_00-26STANDARDBUNDLE" and come from psn_get_store_deals ' +
+        "or psn_search_store.",
+      inputSchema: {
+        productId: z.string().describe("PlayStation Store product id."),
+      },
+    },
+    handle(({ productId }) => store.getProduct(productId))
+  );
+
+  server.registerTool(
+    "psn_search_store",
+    {
+      title: "Search the PlayStation Store",
+      description:
+        "Search the PlayStation Store catalog for games, bundles, and add-ons by " +
+        "name. Returns product ids, current prices, and any active discounts.",
+      inputSchema: {
+        query: z.string().describe("Game or product name to search for."),
+      },
+    },
+    handle(({ query }) => store.search(query))
   );
 }
