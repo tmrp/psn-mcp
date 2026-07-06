@@ -4,6 +4,12 @@
   "description": "MCP server for interfacing with the PlayStation Network",
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tmrp/psn-mcp.git"
+  },
+  "homepage": "https://github.com/tmrp/psn-mcp#readme",
+  "bugs": "https://github.com/tmrp/psn-mcp/issues",
   "bin": {
     "psn-mcp": "dist/index.js"
   },

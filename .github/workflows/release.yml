@@ -82,7 +82,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_CONFIG_PROVENANCE: true
-          # Fallback for classic token auth — only needed if OIDC trusted
-          # publishing is NOT configured for @tmrp/env on npmjs.com, or the
-          # runner's npm is < 11.5.1. Add NPM_TOKEN as a repo secret to use it.
+          # Publishing auth is OIDC trusted publishing: on npmjs.com, the
+          # psn-mcp package must list this repo (tmrp/psn-mcp) and workflow
+          # file (release.yml) as a trusted publisher. npm >= 11.5.1 then
+          # exchanges the Actions OIDC token (id-token: write above) for a
+          # publish credential automatically — no long-lived secret involved.
+          # NPM_TOKEN is only a fallback for when trusted publishing is not
+          # configured; it can be left unset (or deleted) once it is.
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
