@@ -13,10 +13,13 @@
   ],
   "scripts": {
     "build": "tsc",
+    "changeset": "changeset",
     "prepublishOnly": "tsc",
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "version:packages": "changeset version && pnpm install --lockfile-only && prettier --write \"**/CHANGELOG.md\"",
+    "release": "changeset publish"
   },
   "keywords": [
     "mcp",
