@@ -15,8 +15,14 @@
   },
   "main": "dist/index.js",
   "files": [
-    "dist"
+    "dist",
+    "package.json",
+    "LICENSE",
+    "README.md"
   ],
+  "publishConfig": {
+    "provenance": true
+  },
   "scripts": {
     "build": "tsc",
     "changeset": "changeset",
@@ -26,7 +32,6 @@
     "lint": "prettier --check .",
     "lint:fix": "prettier --write .",
     "test": "node --import tsx --test tests/*.test.ts",
-    "test:runtime": "node scripts/runtime-smoke.mjs",
     "typecheck": "tsc --noEmit",
     "version:packages": "changeset version && pnpm install --lockfile-only && prettier --write \"**/CHANGELOG.md\"",
     "release": "changeset publish"

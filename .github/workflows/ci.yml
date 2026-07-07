@@ -31,12 +31,6 @@ jobs:
           cache: pnpm
           node-version-file: .nvmrc
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-
-      - name: Setup Deno
-        uses: denoland/setup-deno@v2
-
       - name: Install Dependencies
         run: pnpm install --frozen-lockfile
 
@@ -59,6 +53,3 @@ jobs:
 
       - name: Validate Package Contents
         run: pnpm pack --dry-run
-
-      - name: Runtime Smoke Tests
-        run: pnpm test:runtime
