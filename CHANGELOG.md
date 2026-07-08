@@ -1,5 +1,11 @@
 # psn-mcp
 
+## 0.1.4
+
+### Patch Changes
+
+- [#14](https://github.com/tmrp/psn-mcp/pull/14) [`5235e00`](https://github.com/tmrp/psn-mcp/commit/5235e00d4548ae3979b2dab3e6df73b57b987d8f) Thanks [@github-actions](https://github.com/apps/github-actions)! - patch version
+
 ## 0.1.3
 
 ### Patch Changes
