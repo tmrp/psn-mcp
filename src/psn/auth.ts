@@ -134,15 +134,23 @@ export async function refreshTokens(refreshToken: string): Promise<TokenSet> {
 export class TokenManager {
   private tokens: TokenSet | null = null;
   private pending: Promise<TokenSet> | null = null;
+  private npsso: string | null;
 
-  constructor(private readonly npsso: string) {
+  constructor(npsso?: string | null) {
+    this.npsso = npsso || null;
+  }
+
+  hasNpsso(): boolean {
+    return Boolean(this.npsso);
+  }
+
+  setNpsso(npsso: string): void {
     if (!npsso) {
-      throw new PsnAuthError(
-        "No NPSSO token configured. Set the PSN_NPSSO environment variable. " +
-          "Sign in at https://www.playstation.com, then visit " +
-          "https://ca.account.sony.com/api/v1/ssocookie to copy your token.",
-      );
+      throw new PsnAuthError("Cannot set an empty NPSSO token.");
     }
+    this.npsso = npsso;
+    this.tokens = null;
+    this.pending = null;
   }
 
   /** Returns a valid access token, authenticating or refreshing as needed. */
@@ -162,6 +170,13 @@ export class TokenManager {
   }
 
   private async renew(): Promise<TokenSet> {
+    if (!this.npsso) {
+      throw new PsnAuthError(
+        "No NPSSO token configured. Run psn_begin_login and psn_complete_login, " +
+          "or set the PSN_NPSSO environment variable.",
+      );
+    }
+
     const margin = 60_000;
     if (this.tokens && this.tokens.refreshExpiresAt - margin > Date.now()) {
       try {

@@ -1,6 +1,14 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import {
+  beginBrowserLogin,
+  cancelBrowserLogin,
+  completeBrowserLogin,
+  hasActiveBrowserLogin,
+} from "./psn/browser-login.js";
 import type { PsnApi } from "./psn/api.js";
+import { authenticateWithNpsso, type TokenManager } from "./psn/auth.js";
+import { credentialsPath, saveStoredNpsso } from "./psn/credentials.js";
 import { ALL_DEALS_CATEGORY_ID, type PsnStore } from "./psn/store.js";
 
 const userParam = z
@@ -42,7 +50,72 @@ export function registerTools(
   server: McpServer,
   psn: PsnApi,
   store: PsnStore,
+  tokens: TokenManager,
 ): void {
+  server.registerTool(
+    "psn_auth_status",
+    {
+      title: "Get PSN auth status",
+      description:
+        "Check whether this MCP server has PSN account credentials configured.",
+      inputSchema: {},
+    },
+    handle(async () => ({
+      configured: tokens.hasNpsso(),
+      loginInProgress: hasActiveBrowserLogin(),
+      credentialsPath: credentialsPath(),
+    })),
+  );
+
+  server.registerTool(
+    "psn_begin_login",
+    {
+      title: "Begin PSN login",
+      description:
+        "Open a temporary browser profile for PlayStation login. After signing in, " +
+        "call psn_complete_login to capture the NPSSO token automatically.",
+      inputSchema: {},
+    },
+    handle(() => beginBrowserLogin()),
+  );
+
+  server.registerTool(
+    "psn_complete_login",
+    {
+      title: "Complete PSN login",
+      description:
+        "Capture the NPSSO token from the browser opened by psn_begin_login, verify it, " +
+        "and save it for future MCP server starts.",
+      inputSchema: {},
+    },
+    handle(async () => {
+      const { npsso } = await completeBrowserLogin();
+      await authenticateWithNpsso(npsso);
+      tokens.setNpsso(npsso);
+      const savedTo = await saveStoredNpsso(npsso);
+      return {
+        authenticated: true,
+        savedTo,
+        message:
+          "PSN login completed. Account tools can now use the authenticated account.",
+      };
+    }),
+  );
+
+  server.registerTool(
+    "psn_cancel_login",
+    {
+      title: "Cancel PSN login",
+      description:
+        "Close the temporary browser profile opened by psn_begin_login without saving credentials.",
+      inputSchema: {},
+    },
+    handle(async () => {
+      await cancelBrowserLogin();
+      return { cancelled: true };
+    }),
+  );
+
   server.registerTool(
     "psn_get_profile",
     {
