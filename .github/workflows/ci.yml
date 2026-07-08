@@ -36,7 +36,7 @@ jobs:
 
       # Release branches should include a changeset before merging.
       - name: Changeset status
-        if: github.event_name == 'pull_request' && startsWith(github.head_ref, 'changeset-release')
+        if: github.event_name == 'pull_request' && startsWith(github.head_ref, 'release-')
         run: pnpm changeset status --since=origin/${{ github.base_ref }}
 
       - name: Lint
