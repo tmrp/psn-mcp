@@ -34,9 +34,9 @@ jobs:
       - name: Install Dependencies
         run: pnpm install --frozen-lockfile
 
-      # Release branches should include a changeset before merging.
+      # Changesets release PRs should consume all pending changesets before merging.
       - name: Changeset status
-        if: github.event_name == 'pull_request' && startsWith(github.head_ref, 'release-')
+        if: github.event_name == 'pull_request' && startsWith(github.head_ref, 'changeset-release/')
         run: pnpm changeset status --since=origin/${{ github.base_ref }}
 
       - name: Lint
