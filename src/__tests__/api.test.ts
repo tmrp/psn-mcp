@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { PsnApi } from "../src/psn/api.js";
-import type { PsnHttpClient } from "../src/psn/http.js";
+import { PsnApi } from "../psn/api.js";
+import type { PsnHttpClient } from "../psn/http.js";
 
 function apiWithStub(
   handler: (path: string, options?: unknown) => unknown,

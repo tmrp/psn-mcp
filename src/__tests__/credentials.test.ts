@@ -7,7 +7,7 @@ import {
   credentialsPath,
   loadStoredNpsso,
   saveStoredNpsso,
-} from "../src/psn/credentials.js";
+} from "../psn/credentials.js";
 
 const originalFile = process.env.PSN_NPSSO_FILE;
 let tempDir: string | null = null;

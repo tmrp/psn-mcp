@@ -1,6 +1,6 @@
 import { test, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { PsnStore } from "../src/psn/store.js";
+import { PsnStore } from "../psn/store.js";
 
 const realFetch = globalThis.fetch;
 afterEach(() => {

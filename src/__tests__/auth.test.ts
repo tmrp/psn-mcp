@@ -4,7 +4,7 @@ import {
   authenticateWithNpsso,
   PsnAuthError,
   TokenManager,
-} from "../src/psn/auth.js";
+} from "../psn/auth.js";
 
 const realFetch = globalThis.fetch;
 afterEach(() => {

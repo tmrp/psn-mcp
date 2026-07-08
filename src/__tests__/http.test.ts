@@ -1,7 +1,7 @@
 import { test, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { PsnApiError, PsnHttpClient } from "../src/psn/http.js";
-import type { TokenManager } from "../src/psn/auth.js";
+import { PsnApiError, PsnHttpClient } from "../psn/http.js";
+import type { TokenManager } from "../psn/auth.js";
 
 const realFetch = globalThis.fetch;
 afterEach(() => {
