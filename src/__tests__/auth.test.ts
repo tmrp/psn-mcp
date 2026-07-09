@@ -4,7 +4,7 @@ import {
   authenticateWithNpsso,
   PsnAuthError,
   TokenManager,
-} from "../src/psn/auth.js";
+} from "../psn/auth.js";
 
 const realFetch = globalThis.fetch;
 afterEach(() => {
@@ -20,8 +20,39 @@ function stubFetch(responses: Response[]): void {
   };
 }
 
-test("TokenManager rejects an empty NPSSO token", () => {
-  assert.throws(() => new TokenManager(""), PsnAuthError);
+test("TokenManager rejects an empty NPSSO token", async () => {
+  const manager = new TokenManager("");
+  assert.equal(manager.hasNpsso(), false);
+  await assert.rejects(manager.getAccessToken(), PsnAuthError);
+});
+
+test("TokenManager accepts NPSSO after construction", async () => {
+  let authCalls = 0;
+  globalThis.fetch = async (input: string | URL | Request) => {
+    const url = String(input instanceof Request ? input.url : input);
+    if (url.includes("/authorize")) {
+      authCalls++;
+      return new Response(null, {
+        status: 302,
+        headers: {
+          location: "com.scee.psxandroid.scecompcall://redirect?code=v3.later",
+        },
+      });
+    }
+    return Response.json({
+      access_token: `access-${authCalls}`,
+      token_type: "bearer",
+      expires_in: 3600,
+      refresh_token: "refresh",
+      refresh_token_expires_in: 5184000,
+      scope: "psn:mobile.v2.core psn:clientapp",
+    });
+  };
+
+  const manager = new TokenManager();
+  manager.setNpsso("npsso-token");
+  assert.equal(manager.hasNpsso(), true);
+  assert.equal(await manager.getAccessToken(), "access-1");
 });
 
 test("authenticateWithNpsso exchanges NPSSO for a token set", async () => {

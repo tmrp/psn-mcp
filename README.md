@@ -11,18 +11,32 @@ API.
 
 ## Requirements
 
-- Node.js 18+
-- A PlayStation Network account and its **NPSSO token** (see below)
+- Node.js 24.18+
+- A PlayStation Network account
 
-## Getting your NPSSO token
+## Signing in
+
+The MCP server can automate NPSSO capture through an isolated browser profile:
+
+1. Start the MCP server without `PSN_NPSSO`.
+2. Call the `psn_begin_login` tool.
+3. Sign in to PlayStation in the browser window it opens.
+4. Call the `psn_complete_login` tool.
+
+`psn_complete_login` reads the PlayStation `npsso` browser cookie, verifies it,
+and stores it in `~/.config/psn-mcp/credentials.json` with owner-only file
+permissions. Future server starts use the stored token automatically. Set
+`PSN_NPSSO_FILE` to choose a different credential file.
+
+If browser automation is unavailable, you can still configure an NPSSO manually:
 
 1. Sign in at [playstation.com](https://www.playstation.com).
 2. In the same browser, open <https://ca.account.sony.com/api/v1/ssocookie>.
-3. Copy the 64-character `npsso` value from the JSON response.
+3. Copy the 64-character `npsso` value from the JSON response into `PSN_NPSSO`.
 
 The server exchanges the NPSSO for an OAuth access token on first use and
 refreshes it automatically. NPSSO tokens expire after about two months; when
-tools start failing with an auth error, fetch a fresh one.
+tools start failing with an auth error, run the login flow again.
 
 > **Note:** this uses your personal account session. What you can see (other
 > users' friends, presence, play history) is governed by normal PSN privacy
@@ -38,10 +52,7 @@ configuration (e.g. `claude_desktop_config.json`):
   "mcpServers": {
     "psn": {
       "command": "npx",
-      "args": ["-y", "psn-mcp"],
-      "env": {
-        "PSN_NPSSO": "<your npsso token>"
-      }
+      "args": ["-y", "psn-mcp"]
     }
   }
 }
@@ -50,13 +61,17 @@ configuration (e.g. `claude_desktop_config.json`):
 Or for Claude Code:
 
 ```sh
-claude mcp add psn --env PSN_NPSSO=<your npsso token> -- npx -y psn-mcp
+claude mcp add psn -- npx -y psn-mcp
 ```
 
 ## Tools
 
 | Tool                      | Description                                                        |
 | ------------------------- | ------------------------------------------------------------------ |
+| `psn_auth_status`         | Whether PSN credentials are configured or login is in progress     |
+| `psn_begin_login`         | Open the browser-based PSN login helper                            |
+| `psn_complete_login`      | Capture and save the NPSSO token from the login helper             |
+| `psn_cancel_login`        | Close the login helper without saving credentials                  |
 | `psn_get_profile`         | Profile for a user: online id, about-me, avatars, PS Plus status   |
 | `psn_search_players`      | Search PSN players by name; returns online ids and account ids     |
 | `psn_get_friends`         | A user's friends list, resolved to profiles                        |
