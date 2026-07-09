@@ -29,7 +29,8 @@ jobs:
         uses: actions/setup-node@v6
         with:
           cache: pnpm
-          node-version-file: .nvmrc
+          node-version: 22
+          registry-url: https://registry.npmjs.org
 
       - name: Install Dependencies
         run: pnpm install --frozen-lockfile
