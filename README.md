@@ -92,11 +92,58 @@ For PS5 titles pass `npServiceName: "trophy2"`; for PS4 and earlier use
 `"trophy"`. `psn_get_trophy_titles` reports the right value per game.
 
 The three `store` tools browse the public PlayStation Store and need **no PSN
-account**. They power prompts like _"give me the top 10 games currently on sale
-based on review score"_ — call `psn_get_store_deals` with `includeRatings: true`
-and rank by `starRating.averageRating`. Set `PSN_STORE_LOCALE` (e.g. `en-gb`,
-`de-de`, `ja-jp`) to change the store region and currency; the default is
-`en-us`.
+account**. Set `PSN_STORE_LOCALE` (e.g. `en-gb`, `de-de`, `ja-jp`) to change the
+store region and currency; the default is `en-us`.
+
+## Examples
+
+Once the server is connected, just ask in natural language. Some prompts and the
+tools they exercise:
+
+**Presence and friends**
+
+> _"Is anyone on my friends list online right now? What are they playing?"_
+
+Calls `psn_get_friends`, then `psn_get_presence` for each friend, and reports
+who is online, on which platform, and in what game.
+
+> _"Look up the profile for online id `Hakoom`."_
+
+Calls `psn_get_profile` with `user: "Hakoom"` — any tool that takes a `user`
+accepts `"me"`, an online id, or a numeric account id.
+
+**Trophies**
+
+> _"What's my trophy level, and what game did I most recently earn trophies
+> in?"_
+
+Calls `psn_get_trophy_summary` and `psn_get_trophy_titles` (most recently played
+first).
+
+> _"Which trophies am I still missing in Astro Bot, and how rare are they?"_
+
+Finds the game via `psn_get_trophy_titles` (getting its `npCommunicationId` and
+`npServiceName`), then combines `psn_get_title_trophies` (names and
+descriptions) with `psn_get_earned_trophies` (earned state and global rarity) to
+list the unearned ones, rarest first.
+
+**Play history**
+
+> _"How many hours have I put into my ten most-played PS5 games?"_
+
+Calls `psn_get_played_games` and ranks by total play duration.
+
+**Store (no PSN account needed)**
+
+> _"Give me the top 10 games currently on sale based on review score."_
+
+Calls `psn_get_store_deals` with `includeRatings: true` and ranks by
+`starRating.averageRating`.
+
+> _"Is Elden Ring discounted right now? What do reviewers rate it?"_
+
+Calls `psn_search_store` with `query: "Elden Ring"`, then
+`psn_get_store_product` for the price, discount, and star-rating breakdown.
 
 ## Architecture
 
