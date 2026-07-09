@@ -1,5 +1,11 @@
 # psn-mcp
 
+## 0.2.1
+
+### Patch Changes
+
+- [#30](https://github.com/tmrp/psn-mcp/pull/30) [`0b25e17`](https://github.com/tmrp/psn-mcp/commit/0b25e1766f3a8efe77dbcae926e7f8104fd81e53) Thanks [@tmrp](https://github.com/tmrp)! - update readme
+
 ## 0.2.0
 
 ### Minor Changes
