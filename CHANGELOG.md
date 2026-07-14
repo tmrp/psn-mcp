@@ -1,5 +1,11 @@
 # psn-mcp
 
+## 0.2.2
+
+### Patch Changes
+
+- [`6e69219`](https://github.com/tmrp/psn-mcp/commit/6e69219f1e20a1ee2c303e13d29f03305adc1c95) Thanks [@tmrp](https://github.com/tmrp)! - update internal dependencies
+
 ## 0.2.1
 
 ### Patch Changes
