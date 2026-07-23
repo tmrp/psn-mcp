@@ -23,11 +23,17 @@ interface CdpCookie {
   value: string;
 }
 
+type CdpListener = (event: { data?: unknown; error?: unknown }) => void;
+
 interface CdpSocket {
   addEventListener(
     type: "open" | "message" | "error" | "close",
-    listener: (event: { data?: unknown; error?: unknown }) => void,
+    listener: CdpListener,
     options?: { once?: boolean },
+  ): void;
+  removeEventListener(
+    type: "open" | "message" | "error" | "close",
+    listener: CdpListener,
   ): void;
   close(): void;
   send(data: string): void;
@@ -207,9 +213,11 @@ async function readNpssoCookie(port: number): Promise<string | null> {
 
   const socket = await openCdpSocket(page.webSocketDebuggerUrl);
   try {
+    // Storage.getCookies is the non-deprecated replacement for the older
+    // Network.getAllCookies; both return every cookie in the browser context.
     const response = await sendCdp<{ cookies: CdpCookie[] }>(
       socket,
-      "Network.getAllCookies",
+      "Storage.getCookies",
     );
     const cookie = response.cookies.find(
       (candidate) =>
@@ -227,7 +235,7 @@ async function openCdpSocket(url: string): Promise<CdpSocket> {
   ).WebSocket;
   if (!WebSocketCtor) {
     throw new Error(
-      "This Node.js runtime does not expose WebSocket. Use Node.js 22+ for browser login.",
+      "This Node.js runtime does not expose WebSocket. Use Node.js 24.18+ for browser login.",
     );
   }
 
@@ -246,28 +254,32 @@ async function openCdpSocket(url: string): Promise<CdpSocket> {
 
 async function sendCdp<T>(socket: CdpSocket, method: string): Promise<T> {
   const id = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER);
-  const result = await new Promise<T>((resolve, reject) => {
-    const timeout = setTimeout(
-      () => reject(new Error(`Timed out calling Chrome DevTools ${method}.`)),
-      5_000,
-    );
-    socket.addEventListener("message", (event) => {
+  return new Promise<T>((resolve, reject) => {
+    const onMessage: CdpListener = (event) => {
       const data = JSON.parse(String(event.data)) as {
         id?: number;
         result?: T;
         error?: { message?: string };
       };
       if (data.id !== id) return;
-      clearTimeout(timeout);
+      cleanup();
       if (data.error) {
         reject(new Error(data.error.message ?? `${method} failed.`));
       } else {
         resolve(data.result as T);
       }
-    });
+    };
+    const cleanup = () => {
+      clearTimeout(timeout);
+      socket.removeEventListener("message", onMessage);
+    };
+    const timeout = setTimeout(() => {
+      cleanup();
+      reject(new Error(`Timed out calling Chrome DevTools ${method}.`));
+    }, 5_000);
+    socket.addEventListener("message", onMessage);
     socket.send(JSON.stringify({ id, method }));
   });
-  return result;
 }
 
 async function fetchJson(url: string): Promise<unknown> {

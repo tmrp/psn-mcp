@@ -1,6 +1,6 @@
 import { test, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { PsnStore } from "../psn/store.js";
+import { PsnStore, PsnStoreError } from "../psn/store.js";
 
 const realFetch = globalThis.fetch;
 afterEach(() => {
@@ -134,4 +134,125 @@ test("search returns products from the server-rendered results", async () => {
   const results = await store.search("example");
   assert.equal(results.length, 1);
   assert.equal(results[0].productId, "UP0000-PPSA00000_00-EXAMPLE");
+});
+
+test("fetchNextData requests the configured locale", async () => {
+  let requestedUrl = "";
+  globalThis.fetch = async (input) => {
+    requestedUrl = String(input);
+    return storePage({
+      props: { apolloState: { "Product:P": productEntity } },
+    });
+  };
+
+  await new PsnStore("de-de").search("elden ring");
+  assert.match(
+    requestedUrl,
+    /store\.playstation\.com\/de-de\/search\/elden%20ring$/,
+  );
+});
+
+test("a missing __NEXT_DATA__ blob raises a 'layout may have changed' error", async () => {
+  globalThis.fetch = async () =>
+    new Response("<html><body>no embedded data here</body></html>", {
+      status: 200,
+      headers: { "content-type": "text/html" },
+    });
+
+  const store = new PsnStore("en-us");
+  await assert.rejects(store.search("anything"), (error: unknown) => {
+    assert.ok(error instanceof PsnStoreError);
+    assert.match(error.message, /store layout may have changed/);
+    return true;
+  });
+});
+
+test("a non-OK store response raises a PsnStoreError carrying the status", async () => {
+  globalThis.fetch = async () => new Response("nope", { status: 503 });
+
+  const store = new PsnStore("en-us");
+  await assert.rejects(store.getCategoryGrid("cat-1", 1), (error: unknown) => {
+    assert.ok(error instanceof PsnStoreError);
+    assert.equal(error.status, 503);
+    return true;
+  });
+});
+
+test("getCategoryGrid errors clearly when no grid is present", async () => {
+  globalThis.fetch = async () => storePage({ props: { apolloState: {} } });
+
+  const store = new PsnStore("en-us");
+  await assert.rejects(
+    store.getCategoryGrid("cat-1", 1),
+    /No category grid found/,
+  );
+});
+
+test("getDeals enriches items with star ratings and tolerates rating failures", async () => {
+  const gridPage = {
+    props: {
+      apolloState: {
+        "CategoryGrid:cat-1:en-us:0:24": {
+          __typename: "CategoryGrid",
+          pageInfo: { totalCount: 2 },
+          products: [
+            { __ref: "Product:HAS-RATING" },
+            { __ref: "Product:NO-RATING" },
+          ],
+        },
+        "Product:HAS-RATING": {
+          ...productEntity,
+          id: "HAS-RATING",
+          name: "Rated Game",
+        },
+        "Product:NO-RATING": {
+          ...productEntity,
+          id: "NO-RATING",
+          name: "Unrated Game",
+        },
+      },
+    },
+  };
+  const ratedProduct = {
+    props: {
+      apolloState: {
+        "Product:HAS-RATING": {
+          ...productEntity,
+          id: "HAS-RATING",
+          name: "Rated Game",
+        },
+      },
+      pageProps: {
+        batarangs: {
+          "star-rating": {
+            text: `<script type="application/json">${JSON.stringify({
+              cache: {
+                "Product:HAS-RATING": {
+                  __typename: "Product",
+                  id: "HAS-RATING",
+                  starRating: { averageRating: 4.2, totalRatingsCount: 500 },
+                },
+              },
+            })}</script>`,
+          },
+        },
+      },
+    },
+  };
+
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    if (url.includes("/category/")) return storePage(gridPage);
+    if (url.includes("/product/HAS-RATING")) return storePage(ratedProduct);
+    // The second product's page fails; getDeals should keep the deal anyway.
+    return new Response("boom", { status: 500 });
+  };
+
+  const store = new PsnStore("en-us");
+  const deals = await store.getDeals(1, true, "cat-1");
+  assert.equal(deals.items.length, 2);
+  assert.equal(deals.items[0].productId, "HAS-RATING");
+  assert.equal(deals.items[0].starRating?.averageRating, 4.2);
+  assert.equal(deals.items[1].productId, "NO-RATING");
+  assert.equal(deals.items[1].starRating, undefined);
 });

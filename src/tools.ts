@@ -8,8 +8,50 @@ import {
 } from "./psn/browser-login.js";
 import type { PsnApi } from "./psn/api.js";
 import { authenticateWithNpsso, type TokenManager } from "./psn/auth.js";
+import { mapWithConcurrency } from "./psn/concurrency.js";
 import { credentialsPath, saveStoredNpsso } from "./psn/credentials.js";
 import { ALL_DEALS_CATEGORY_ID, type PsnStore } from "./psn/store.js";
+
+/**
+ * How many friend profiles to resolve at once. The friends endpoint returns
+ * bare account ids, so each friend needs a profile lookup; bounding the
+ * parallelism keeps a large friends list from fanning out into hundreds of
+ * simultaneous PSN requests.
+ */
+const FRIEND_RESOLUTION_CONCURRENCY = 8;
+
+interface ResolvedFriend {
+  accountId: string;
+  onlineId?: string;
+  isPlus?: boolean;
+}
+
+/**
+ * Resolves bare friend account ids to lightweight profiles, capping the number
+ * of in-flight requests. A profile that can't be fetched (e.g. the friend's
+ * privacy settings) falls back to just the account id.
+ */
+export async function resolveFriendProfiles(
+  psn: Pick<PsnApi, "getProfile">,
+  accountIds: readonly string[],
+): Promise<ResolvedFriend[]> {
+  return mapWithConcurrency(
+    accountIds,
+    FRIEND_RESOLUTION_CONCURRENCY,
+    async (id) => {
+      try {
+        const profile = await psn.getProfile(id);
+        return {
+          accountId: id,
+          onlineId: profile.onlineId,
+          isPlus: profile.isPlus,
+        };
+      } catch {
+        return { accountId: id };
+      }
+    },
+  );
+}
 
 const userParam = z
   .string()
@@ -192,20 +234,7 @@ export function registerTools(
       const accountId = await psn.resolveAccountId(user);
       const friends = await psn.getFriends(accountId, limit, offset);
       // The friends endpoint returns bare account ids; resolve them to profiles.
-      const profiles = await Promise.all(
-        friends.friends.map(async (id) => {
-          try {
-            const profile = await psn.getProfile(id);
-            return {
-              accountId: id,
-              onlineId: profile.onlineId,
-              isPlus: profile.isPlus,
-            };
-          } catch {
-            return { accountId: id };
-          }
-        }),
-      );
+      const profiles = await resolveFriendProfiles(psn, friends.friends);
       return {
         totalItemCount: friends.totalItemCount,
         nextOffset: friends.nextOffset,
