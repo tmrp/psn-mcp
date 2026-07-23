@@ -1,5 +1,11 @@
 # psn-mcp
 
+## 0.3.0
+
+### Minor Changes
+
+- [#39](https://github.com/tmrp/psn-mcp/pull/39) [`729f12e`](https://github.com/tmrp/psn-mcp/commit/729f12e4d47814269a1097315e0ce371e47d8694) Thanks [@tmrp](https://github.com/tmrp)! - improve mcp robustness and project test coverage
+
 ## 0.2.2
 
 ### Patch Changes
