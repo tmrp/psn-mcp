@@ -9,6 +9,8 @@
  * public web store.
  */
 
+import { mapWithConcurrency } from "./concurrency.js";
+
 const STORE_BASE = "https://store.playstation.com";
 
 /** The store's evergreen "All deals" category. */
@@ -294,24 +296,4 @@ export class PsnStore {
     });
     return { ...grid, items };
   }
-}
-
-async function mapWithConcurrency<T, R>(
-  inputs: readonly T[],
-  concurrency: number,
-  fn: (input: T) => Promise<R>,
-): Promise<R[]> {
-  const results = new Array<R>(inputs.length);
-  let next = 0;
-  const workers = Array.from(
-    { length: Math.min(concurrency, inputs.length) },
-    async () => {
-      while (next < inputs.length) {
-        const index = next++;
-        results[index] = await fn(inputs[index]);
-      }
-    },
-  );
-  await Promise.all(workers);
-  return results;
 }
