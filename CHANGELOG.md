@@ -1,5 +1,13 @@
 # psn-mcp
 
+## 0.3.1
+
+### Patch Changes
+
+- [#44](https://github.com/tmrp/psn-mcp/pull/44) [`fff72f2`](https://github.com/tmrp/psn-mcp/commit/fff72f2b4d3bc8353d4bdd6a676eeaec77ecca81) Thanks [@tmrp](https://github.com/tmrp)! - Restore product prices, platforms, images, types, and concept ids by merging the PlayStation Store's normalized product-page caches.
+
+- [`66cc733`](https://github.com/tmrp/psn-mcp/commit/66cc73379afe7fa7e5af97878eeea72ca84d741d) Thanks [@tmrp](https://github.com/tmrp)! - Update internal dependencies
+
 ## 0.3.0
 
 ### Minor Changes
