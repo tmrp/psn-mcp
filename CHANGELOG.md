@@ -1,5 +1,11 @@
 # psn-mcp
 
+## 0.3.2
+
+### Patch Changes
+
+- [#45](https://github.com/tmrp/psn-mcp/pull/45) [`4ba3b0b`](https://github.com/tmrp/psn-mcp/commit/4ba3b0b6e7d992d3b4da2c903a7d58f3268da04c) Thanks [@tmrp](https://github.com/tmrp)! - Remove the fixed-scope repair offer from the package documentation.
+
 ## 0.3.1
 
 ### Patch Changes
