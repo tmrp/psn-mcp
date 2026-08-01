@@ -194,6 +194,12 @@ the Apollo state and star-rating payloads that the store server-renders into
 every page's `__NEXT_DATA__` blob. This needs no authentication but is
 inherently coupled to the store's page structure.
 
+> **Need help outside this package?** I offer a €250 fixed-scope repair for one
+> reproducible bug in a public TypeScript or React repository: an agreed
+> acceptance test, a patch with relevant automated tests, a draft pull request,
+> and one revision. [Submit a public request](https://github.com/tmrp/tmrp/issues/new?template=fixed-scope.yml&title=%5BRepair%20request%20via%20psn-mcp%5D%3A%20).
+> Requests are reviewed before acceptance; no payment is due on submission.
+
 Authentication is lazy: the server starts and lists tools without credentials;
 the token exchange happens on the first tool call. Access tokens are refreshed
 ahead of expiry, falling back to a full NPSSO re-exchange if the refresh token

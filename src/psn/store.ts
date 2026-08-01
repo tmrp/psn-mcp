@@ -73,6 +73,14 @@ interface ApolloEntity {
 
 type ApolloState = Record<string, ApolloEntity>;
 
+interface ApolloRef {
+  __ref?: string;
+}
+
+interface BatarangPayload {
+  cache?: ApolloState;
+}
+
 export class PsnStore {
   constructor(private readonly locale: string = "en-us") {}
 
@@ -120,8 +128,40 @@ export class PsnStore {
     };
   }
 
-  private toStoreItem(entity: ApolloEntity): StoreItem {
-    const price = entity.price as StorePrice | undefined;
+  private toStorePrice(value: unknown): StorePrice | undefined {
+    if (!value || typeof value !== "object") return undefined;
+    const price = value as Record<string, unknown>;
+    const discountText = [
+      price.discountText,
+      price.displayDiscountText,
+      price.savingTag,
+    ].find(
+      (field): field is string => typeof field === "string" && field.length > 0,
+    );
+    const normalized: StorePrice = {
+      basePrice:
+        typeof price.basePrice === "string" ? price.basePrice : undefined,
+      discountedPrice:
+        typeof price.discountedPrice === "string"
+          ? price.discountedPrice
+          : undefined,
+      discountText,
+      isFree: typeof price.isFree === "boolean" ? price.isFree : undefined,
+      isTiedToSubscription:
+        typeof price.isTiedToSubscription === "boolean"
+          ? price.isTiedToSubscription
+          : undefined,
+    };
+    return Object.values(normalized).some((field) => field !== undefined)
+      ? normalized
+      : undefined;
+  }
+
+  private toStoreItem(
+    entity: ApolloEntity,
+    priceOverride?: StorePrice,
+  ): StoreItem {
+    const price = priceOverride ?? this.toStorePrice(entity.price);
     const media = entity.media as
       Array<{ type: string; url: string; role: string }> | undefined;
     const image =
@@ -133,14 +173,106 @@ export class PsnStore {
       type: (entity.localizedStoreDisplayClassification ??
         entity.storeDisplayClassification) as string | undefined,
       platforms: entity.platforms as string[] | undefined,
-      price: price && {
-        basePrice: price.basePrice,
-        discountedPrice: price.discountedPrice,
-        discountText: price.discountText,
-        isFree: price.isFree,
-        isTiedToSubscription: price.isTiedToSubscription,
-      },
+      price,
       imageUrl: image?.url,
+    };
+  }
+
+  private extractBatarangCaches(
+    pageProps: Record<string, unknown>,
+  ): ApolloState[] {
+    const batarangs = pageProps.batarangs as
+      Record<string, { text?: string }> | undefined;
+    const caches: ApolloState[] = [];
+
+    for (const batarang of Object.values(batarangs ?? {})) {
+      const text = batarang.text;
+      if (!text) continue;
+      const inner = text.match(/<script[^>]*>(.*)<\/script>/s)?.[1];
+      if (!inner) continue;
+      try {
+        const payload = JSON.parse(inner) as BatarangPayload;
+        if (payload.cache) caches.push(payload.cache);
+      } catch {
+        // A malformed optional micro-frontend must not hide the base product.
+      }
+    }
+    return caches;
+  }
+
+  private mergeProductEntities(
+    states: ApolloState[],
+    productId: string,
+  ): ApolloEntity | undefined {
+    const matches: ApolloEntity[] = [];
+    for (const state of states) {
+      for (const [key, value] of Object.entries(state)) {
+        const productKey = `Product:${productId}`;
+        if (
+          (key === productKey ||
+            key.startsWith(`${productKey}:`) ||
+            (value.__typename === "Product" && value.id === productId)) &&
+          !matches.includes(value)
+        ) {
+          matches.push(value);
+        }
+      }
+    }
+    return matches.length > 0 ? Object.assign({}, ...matches) : undefined;
+  }
+
+  private findProductPrice(
+    product: ApolloEntity,
+    states: ApolloState[],
+    productId: string,
+  ): StorePrice | undefined {
+    const direct = this.toStorePrice(product.price);
+    if (direct) return direct;
+
+    const ctaRefs = (product.webctas as ApolloRef[] | undefined) ?? [];
+    for (const ref of ctaRefs) {
+      if (!ref.__ref) continue;
+      for (const state of states) {
+        const price = this.toStorePrice(state[ref.__ref]?.price);
+        if (price) return price;
+      }
+    }
+
+    // Current product pages keep the price on a GameCTA entity in a
+    // micro-frontend cache. The primary product id is part of that entity key.
+    for (const state of states) {
+      for (const [key, value] of Object.entries(state)) {
+        const matchesProduct = key.split(":").some((segment) => {
+          if (segment === productId) return true;
+          const skuSuffix = segment.slice(productId.length);
+          return (
+            segment.startsWith(`${productId}-U`) && /^-U\d+$/.test(skuSuffix)
+          );
+        });
+        if (value.__typename !== "GameCTA" || !matchesProduct) {
+          continue;
+        }
+        const price = this.toStorePrice(value.price);
+        if (price) return price;
+      }
+    }
+    return undefined;
+  }
+
+  private toStarRating(value: unknown): StarRating | undefined {
+    if (!value || typeof value !== "object") return undefined;
+    const rating = value as {
+      averageRating?: number;
+      totalRatingsCount?: number;
+      ratingsDistribution?: Array<{ rating: number; percentage: string }>;
+    };
+    if (rating.averageRating === undefined) return undefined;
+    return {
+      averageRating: rating.averageRating,
+      totalRatingsCount: rating.totalRatingsCount ?? 0,
+      ratingsDistribution: rating.ratingsDistribution?.map(
+        ({ rating: score, percentage }) => ({ rating: score, percentage }),
+      ),
     };
   }
 
@@ -192,22 +324,34 @@ export class PsnStore {
       `/product/${encodeURIComponent(productId)}`,
     );
 
-    const entity =
-      apollo[`Product:${productId}`] ??
-      Object.entries(apollo).find(
-        ([key, value]) =>
-          key.startsWith("Product:") && value.__typename === "Product",
-      )?.[1];
+    // Sony now normalizes product pages across several independently rendered
+    // micro-frontends. Merge every fragment for this exact product so the
+    // result contains the image/platform/type fields as well as the base name.
+    const states = [apollo, ...this.extractBatarangCaches(pageProps)];
+    const entity = this.mergeProductEntities(states, productId);
     if (!entity) {
       throw new PsnStoreError(
         `Product ${productId} not found on the PlayStation Store.`,
       );
     }
 
+    const concept = entity.concept as
+      { __ref?: string; id?: string | number } | undefined;
+    const conceptId =
+      entity.conceptId == null
+        ? (concept?.id?.toString() ?? concept?.__ref?.replace(/^Concept:/, ""))
+        : String(entity.conceptId);
+
     return {
-      ...this.toStoreItem(entity),
-      starRating: this.extractStarRating(pageProps, productId),
-      url: `${STORE_BASE}/${this.locale}/product/${productId}`,
+      ...this.toStoreItem(
+        entity,
+        this.findProductPrice(entity, states, productId),
+      ),
+      starRating:
+        this.toStarRating(entity.starRating) ??
+        this.extractStarRating(pageProps, productId),
+      conceptId,
+      url: `${STORE_BASE}/${this.locale}/product/${encodeURIComponent(productId)}`,
     };
   }
 
@@ -228,30 +372,14 @@ export class PsnStore {
     if (!inner) return undefined;
 
     try {
-      const payload = JSON.parse(inner) as { cache?: ApolloState };
+      const payload = JSON.parse(inner) as BatarangPayload;
       const cached =
         payload.cache?.[`Product:${productId}`] ??
         Object.values(payload.cache ?? {}).find(
-          (v) => v.__typename === "Product" && v.starRating,
+          (v) =>
+            v.__typename === "Product" && v.id === productId && v.starRating,
         );
-      const rating = cached?.starRating as
-        | {
-            averageRating?: number;
-            totalRatingsCount?: number;
-            ratingsDistribution?: Array<{ rating: number; percentage: string }>;
-          }
-        | undefined;
-      if (rating?.averageRating === undefined) return undefined;
-      return {
-        averageRating: rating.averageRating,
-        totalRatingsCount: rating.totalRatingsCount ?? 0,
-        ratingsDistribution: rating.ratingsDistribution?.map(
-          ({ rating: r, percentage }) => ({
-            rating: r,
-            percentage,
-          }),
-        ),
-      };
+      return this.toStarRating(cached?.starRating);
     } catch {
       return undefined;
     }

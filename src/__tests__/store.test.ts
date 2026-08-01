@@ -101,6 +101,114 @@ test("getProduct parses the star-rating micro-frontend payload", async () => {
   ]);
 });
 
+test("getProduct merges product fragments and resolves a micro-frontend CTA price", async () => {
+  const productId = "UP0000-PPSA00000_00-EXAMPLE";
+  const ctaRef = `GameCTA:ADD_TO_CART:${productId}-U001:OUTRIGHT`;
+  const fragment = (cache: object) => ({
+    text: `<script type="application/json">${JSON.stringify({ cache })}</script>`,
+  });
+
+  globalThis.fetch = async () =>
+    storePage({
+      props: {
+        // The current live product page exposes only this skeletal locale key
+        // in its root Apollo state.
+        apolloState: {
+          [`Product:${productId}:en-us`]: {
+            __typename: "Product",
+            id: productId,
+            name: "Example Game",
+          },
+        },
+        pageProps: {
+          batarangs: {
+            "background-image": fragment({
+              [`Product:${productId}`]: {
+                __typename: "Product",
+                id: productId,
+                media: [
+                  {
+                    type: "IMAGE",
+                    role: "MASTER",
+                    url: "https://img.example/product.png",
+                  },
+                ],
+              },
+            }),
+            cta: fragment({
+              [ctaRef]: {
+                __typename: "GameCTA",
+                price: {
+                  basePrice: "$59.99",
+                  discountedPrice: "$19.79",
+                  displayDiscountText: "",
+                  savingTag: "Save 67%",
+                  isFree: false,
+                  isTiedToSubscription: false,
+                },
+              },
+              [`Product:${productId}`]: {
+                __typename: "Product",
+                id: productId,
+                concept: { __ref: "Concept:12345" },
+                platforms: ["PS5"],
+                storeDisplayClassification: "Full Game",
+                webctas: [{ __ref: ctaRef }],
+              },
+            }),
+          },
+        },
+      },
+    });
+
+  const product = await new PsnStore("en-us").getProduct(productId);
+  assert.equal(product.name, "Example Game");
+  assert.deepEqual(product.platforms, ["PS5"]);
+  assert.equal(product.type, "Full Game");
+  assert.equal(product.imageUrl, "https://img.example/product.png");
+  assert.equal(product.price?.basePrice, "$59.99");
+  assert.equal(product.price?.discountedPrice, "$19.79");
+  assert.equal(product.price?.discountText, "Save 67%");
+  assert.equal(product.conceptId, "12345");
+});
+
+test("getProduct CTA fallback ignores a related product whose id contains the requested id", async () => {
+  const productId = "UP0000-PPSA00000_00-EXAMPLE";
+  const fragment = (cache: object) => ({
+    text: `<script type="application/json">${JSON.stringify({ cache })}</script>`,
+  });
+
+  globalThis.fetch = async () =>
+    storePage({
+      props: {
+        apolloState: {
+          [`Product:${productId}:en-us`]: {
+            __typename: "Product",
+            id: productId,
+            name: "Example Game",
+          },
+        },
+        pageProps: {
+          batarangs: {
+            cta: fragment({
+              [`GameCTA:ADD_TO_CART:${productId}-DELUXE-U001:OUTRIGHT`]: {
+                __typename: "GameCTA",
+                price: { discountedPrice: "$99.99" },
+              },
+              [`GameCTA:ADD_TO_CART:${productId}-U001:OUTRIGHT`]: {
+                __typename: "GameCTA",
+                price: { discountedPrice: "$19.79" },
+              },
+            }),
+          },
+        },
+      },
+    });
+
+  const product = await new PsnStore("en-us").getProduct(productId);
+  assert.equal(product.price?.discountedPrice, "$19.79");
+});
+
 test("getProduct omits the rating when the micro-frontend payload is absent", async () => {
   globalThis.fetch = async () =>
     storePage({
