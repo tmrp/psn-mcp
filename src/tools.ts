@@ -1,4 +1,4 @@
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import {
   beginBrowserLogin,
@@ -100,7 +100,7 @@ export function registerTools(
       title: "Get PSN auth status",
       description:
         "Check whether this MCP server has PSN account credentials configured.",
-      inputSchema: {},
+      inputSchema: z.object({}),
     },
     handle(async () => ({
       configured: tokens.hasNpsso(),
@@ -116,7 +116,7 @@ export function registerTools(
       description:
         "Open a temporary browser profile for PlayStation login. After signing in, " +
         "call psn_complete_login to capture the NPSSO token automatically.",
-      inputSchema: {},
+      inputSchema: z.object({}),
     },
     handle(() => beginBrowserLogin()),
   );
@@ -128,7 +128,7 @@ export function registerTools(
       description:
         "Capture the NPSSO token from the browser opened by psn_begin_login, verify it, " +
         "and save it for future MCP server starts.",
-      inputSchema: {},
+      inputSchema: z.object({}),
     },
     handle(async () => {
       const { npsso } = await completeBrowserLogin();
@@ -150,7 +150,7 @@ export function registerTools(
       title: "Cancel PSN login",
       description:
         "Close the temporary browser profile opened by psn_begin_login without saving credentials.",
-      inputSchema: {},
+      inputSchema: z.object({}),
     },
     handle(async () => {
       await cancelBrowserLogin();
@@ -165,7 +165,7 @@ export function registerTools(
       description:
         "Get a PlayStation Network user's profile: online id, about-me, avatars, " +
         "languages, and PS Plus / verification status.",
-      inputSchema: { user: userParam },
+      inputSchema: z.object({ user: userParam }),
     },
     handle(async ({ user }) =>
       psn.getProfile(await psn.resolveAccountId(user)),
@@ -179,7 +179,7 @@ export function registerTools(
       description:
         "Search PlayStation Network for players by name. Returns matching online ids, " +
         "account ids, and avatars. Useful for finding a user's account id.",
-      inputSchema: {
+      inputSchema: z.object({
         query: z.string().describe("Name or online id to search for."),
         limit: z
           .number()
@@ -188,7 +188,7 @@ export function registerTools(
           .max(50)
           .default(20)
           .describe("Max results."),
-      },
+      }),
     },
     handle(async ({ query, limit }) => {
       const res = await psn.searchPlayers(query, limit);
@@ -213,7 +213,7 @@ export function registerTools(
       description:
         "List a user's PSN friends with their profiles. Friends lists other than your " +
         "own are only visible if that user's privacy settings allow it.",
-      inputSchema: {
+      inputSchema: z.object({
         user: userParam.default("me"),
         limit: z
           .number()
@@ -228,7 +228,7 @@ export function registerTools(
           .min(0)
           .default(0)
           .describe("Pagination offset."),
-      },
+      }),
     },
     handle(async ({ user, limit, offset }) => {
       const accountId = await psn.resolveAccountId(user);
@@ -250,7 +250,7 @@ export function registerTools(
       description:
         "Get a user's current online status: whether they are online, on which " +
         "platform (PS5/PS4), what game they are playing, and when they were last online.",
-      inputSchema: { user: userParam.default("me") },
+      inputSchema: z.object({ user: userParam.default("me") }),
     },
     handle(async ({ user }) =>
       psn.getBasicPresence(await psn.resolveAccountId(user)),
@@ -264,7 +264,7 @@ export function registerTools(
       description:
         "Get a user's overall trophy summary: trophy level, tier, progress to next " +
         "level, and total bronze/silver/gold/platinum counts.",
-      inputSchema: { user: userParam.default("me") },
+      inputSchema: z.object({ user: userParam.default("me") }),
     },
     handle(async ({ user }) =>
       psn.getTrophySummary(await psn.resolveAccountId(user)),
@@ -279,7 +279,7 @@ export function registerTools(
         "List the games a user has earned trophies in, ordered by most recently " +
         "played, with per-game progress and earned counts. Returns each game's " +
         "npCommunicationId and npServiceName for use with the trophy detail tools.",
-      inputSchema: {
+      inputSchema: z.object({
         user: userParam.default("me"),
         limit: z
           .number()
@@ -294,7 +294,7 @@ export function registerTools(
           .min(0)
           .default(0)
           .describe("Pagination offset."),
-      },
+      }),
     },
     handle(async ({ user, limit, offset }) =>
       psn.getTrophyTitles(await psn.resolveAccountId(user), limit, offset),
@@ -308,7 +308,7 @@ export function registerTools(
       description:
         "Get the full trophy list defined for a game (names, descriptions, types, " +
         "groups). Get npCommunicationId and npServiceName from psn_get_trophy_titles.",
-      inputSchema: {
+      inputSchema: z.object({
         npCommunicationId: z
           .string()
           .describe('Trophy set id, e.g. "NPWR20188_00".'),
@@ -321,7 +321,7 @@ export function registerTools(
           ),
         limit: z.number().int().min(1).max(500).default(200),
         offset: z.number().int().min(0).default(0),
-      },
+      }),
     },
     handle(
       ({ npCommunicationId, npServiceName, trophyGroupId, limit, offset }) =>
@@ -343,7 +343,7 @@ export function registerTools(
         "Get which trophies a user has earned in a specific game, including earned " +
         "timestamps and global rarity. Combine with psn_get_title_trophies for trophy " +
         "names and descriptions (this endpoint returns ids and earned state).",
-      inputSchema: {
+      inputSchema: z.object({
         user: userParam.default("me"),
         npCommunicationId: z
           .string()
@@ -352,7 +352,7 @@ export function registerTools(
         trophyGroupId: z.string().default("all"),
         limit: z.number().int().min(1).max(500).default(200),
         offset: z.number().int().min(0).default(0),
-      },
+      }),
     },
     handle(
       async ({
@@ -381,7 +381,7 @@ export function registerTools(
       description:
         "List the PS4/PS5 games a user has played, with play counts, first/last " +
         "played dates, and total play duration. Subject to the user's privacy settings.",
-      inputSchema: {
+      inputSchema: z.object({
         user: userParam.default("me"),
         limit: z
           .number()
@@ -396,7 +396,7 @@ export function registerTools(
           .min(0)
           .default(0)
           .describe("Pagination offset."),
-      },
+      }),
     },
     handle(async ({ user, limit, offset }) =>
       psn.getPlayedGames(await psn.resolveAccountId(user), limit, offset),
@@ -415,7 +415,7 @@ export function registerTools(
         "game's community star rating (0-5) and rating count - useful for ranking " +
         "deals by review score. Returns 24 items per page; pass page to paginate. " +
         "Store region comes from the PSN_STORE_LOCALE env var (default en-us).",
-      inputSchema: {
+      inputSchema: z.object({
         page: z
           .number()
           .int()
@@ -434,7 +434,7 @@ export function registerTools(
           .describe(
             'Store category to browse; defaults to the "All deals" category.',
           ),
-      },
+      }),
     },
     handle(({ page, includeRatings, categoryId }) =>
       store.getDeals(page, includeRatings, categoryId),
@@ -450,9 +450,9 @@ export function registerTools(
         "community star rating with rating count and distribution. Product ids look " +
         'like "UP0006-PPSA27360_00-26STANDARDBUNDLE" and come from psn_get_store_deals ' +
         "or psn_search_store.",
-      inputSchema: {
+      inputSchema: z.object({
         productId: z.string().describe("PlayStation Store product id."),
-      },
+      }),
     },
     handle(({ productId }) => store.getProduct(productId)),
   );
@@ -464,9 +464,9 @@ export function registerTools(
       description:
         "Search the PlayStation Store catalog for games, bundles, and add-ons by " +
         "name. Returns product ids, current prices, and any active discounts.",
-      inputSchema: {
+      inputSchema: z.object({
         query: z.string().describe("Game or product name to search for."),
-      },
+      }),
     },
     handle(({ query }) => store.search(query)),
   );

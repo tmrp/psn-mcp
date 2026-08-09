@@ -179,6 +179,7 @@ Calls `psn_search_store` with `query: "Elden Ring"`, then
 ```
 src/
   index.ts        Entry point: stdio MCP server wiring
+  server.ts       MCP server factory and protocol-version settings
   tools.ts        MCP tool definitions (zod schemas -> PSN API calls)
   psn/
     auth.ts       NPSSO -> OAuth code -> access token exchange, auto-refresh
