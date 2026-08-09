@@ -1,5 +1,11 @@
 # psn-mcp
 
+## 0.3.3
+
+### Patch Changes
+
+- [`b292806`](https://github.com/tmrp/psn-mcp/commit/b29280629dda82fafc0f001f1b19f037c1d1a372) Thanks [@tmrp](https://github.com/tmrp)! - Update internal tooling by allow esbuild
+
 ## 0.3.2
 
 ### Patch Changes
