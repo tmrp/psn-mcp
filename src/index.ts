@@ -2,14 +2,13 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { TokenManager } from "./psn/auth.js";
 import { loadStoredNpsso } from "./psn/credentials.js";
 import { PsnHttpClient } from "./psn/http.js";
 import { PsnApi } from "./psn/api.js";
 import { PsnStore } from "./psn/store.js";
-import { registerTools } from "./tools.js";
+import { createPsnMcpServer } from "./server.js";
 
 // Read the version at runtime rather than hardcoding it. package.json sits one
 // level up from this file in both dev (src/) and the published package (dist/),
@@ -39,10 +38,11 @@ async function main(): Promise<void> {
   // Store browsing is public web data; no PSN account needed.
   const store = new PsnStore(process.env.PSN_STORE_LOCALE ?? "en-us");
 
-  const server = new McpServer({ name: "psn-mcp", version });
-  registerTools(server, psn, store, tokens);
-
-  await server.connect(new StdioServerTransport());
+  // serveStdio selects the 2026-07-28 or legacy protocol era from the
+  // connection's opening exchange and pins one server instance to it.
+  serveStdio(() => createPsnMcpServer(version, psn, store, tokens), {
+    onerror: (error) => console.error("mcp error:", error),
+  });
   console.error("psn-mcp server running on stdio");
 }
 
