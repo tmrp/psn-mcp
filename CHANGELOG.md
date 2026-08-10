@@ -1,5 +1,11 @@
 # psn-mcp
 
+## 0.4.0
+
+### Minor Changes
+
+- [#48](https://github.com/tmrp/psn-mcp/pull/48) [`d2810ec`](https://github.com/tmrp/psn-mcp/commit/d2810ecc2d70fd8cc920c15e3a1f089a8881a65c) Thanks [@tmrp](https://github.com/tmrp)! - Support MCP 2026-07-28 over stdio while remaining compatible with legacy clients, and migrate to the TypeScript SDK v2.
+
 ## 0.3.3
 
 ### Patch Changes

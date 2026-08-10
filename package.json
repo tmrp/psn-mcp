@@ -1,6 +1,6 @@
 {
   "name": "psn-mcp",
-  "version": "0.3.3",
+  "version": "0.4.0",
   "description": "MCP server for interfacing with the PlayStation Network",
   "type": "module",
   "license": "MIT",
