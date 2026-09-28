@@ -1,5 +1,11 @@
 # psn-mcp
 
+## 0.5.0
+
+### Minor Changes
+
+- [#60](https://github.com/tmrp/psn-mcp/pull/60) [`27472ee`](https://github.com/tmrp/psn-mcp/commit/27472eef91a39dadd44bcf6027cea7e1ed9426fc) Thanks [@tmrp](https://github.com/tmrp)! - Add psn_get_purchased_games to list the authenticated account's digital PS4/PS5 library with game and entitlement metadata, play time and play history enabled by default, pagination, and platform, membership, and license filters. Set includePlayTime to false to skip play-history lookups.
+
 ## 0.4.2
 
 ### Patch Changes
