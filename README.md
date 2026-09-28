@@ -127,12 +127,17 @@ and membership information. It does not report purchase prices or dates.
 
 Purchased games default to active PS4/PS5 licenses, ordered by activation date
 (newest first). Use `platform: ["ps5"]` to filter platforms, `isActive: false`
-for inactive licenses, or `membership: "NONE"` / `"PS_PLUS"` to filter membership.
-Omit `membership` to include both. Use `sortDirection: "asc"` for oldest first.
+for inactive licenses, or `membership: "PS_PLUS"` for PS Plus entitlements.
+`membership: "NONE"` selects entitlements not from PS Plus, including free titles;
+it does not mean paid purchases. Omit `membership` to include all membership types.
+Use `sortDirection: "asc"` for oldest first.
 Pages accept `limit` (1–100, default 50) and `offset` (default 0). Pass the
-returned `nextOffset` as `offset` until it is absent. When Sony omits its
-`pageInfo`, a full final page can be followed by an empty page; total counts
-are only returned when Sony supplies them.
+returned `nextOffset` as `offset` until it is absent. The `NONE` filter may scan
+several library pages per call. Its offsets count matching entitlements, and its
+`totalItemCount` and `pageInfo` are returned only when the scan reaches the end
+and the filtered total is known. For other membership selections, pagination and
+totals come from Sony; when Sony omits `pageInfo`, a full final page can be
+followed by an empty page.
 
 Play time is included by default: `playDuration` (an ISO 8601 duration such as
 `PT12H30M`), `playCount`, `firstPlayedDateTime`, and `lastPlayedDateTime` where

@@ -432,7 +432,12 @@ export function registerTools(
         membership: z
           .enum(["NONE", "PS_PLUS"])
           .optional()
-          .describe("Filter membership; omit to include all membership types."),
+          .describe(
+            "NONE selects entitlements not from PS Plus, including free titles; " +
+              "PS_PLUS selects PS Plus entitlements. Omit to include all membership types. " +
+              "NONE may scan several library pages; offsets count matching entries, " +
+              "and totals are returned only when the scan reaches the end.",
+          ),
         sortDirection: z.enum(["asc", "desc"]).default("desc"),
         includePlayTime: z
           .boolean()

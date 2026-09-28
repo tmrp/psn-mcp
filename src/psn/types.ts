@@ -168,9 +168,10 @@ export interface PurchasedGamesResponse {
   games: PurchasedGame[];
   /** Library results are still returned if the optional play-history lookup fails. */
   playTimeError?: string;
-  /** Present only when Sony returns pagination metadata. */
+  /** Sony pagination, or filtered pagination after a complete NONE scan. */
   pageInfo?: PurchasedGamesPageInfo;
+  /** For NONE, present only after all matching entitlements have been counted. */
   totalItemCount?: number;
-  /** If Sony omits pageInfo, a full page may be followed by an empty page. */
+  /** Position in the selected membership's results. NONE uses matching entries. */
   nextOffset?: number;
 }
