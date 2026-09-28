@@ -6,21 +6,12 @@ import { join } from "node:path";
 import { createServer } from "node:net";
 
 const LOGIN_URL = "https://www.playstation.com/";
+const CDP_TIMEOUT_MS = 5_000;
 
 interface BrowserLoginSession {
   browser: ChildProcess;
   port: number;
   userDataDir: string;
-}
-
-interface CdpTarget {
-  type: string;
-  webSocketDebuggerUrl?: string;
-}
-
-interface CdpCookie {
-  name: string;
-  value: string;
 }
 
 type CdpListener = (event: { data?: unknown; error?: unknown }) => void;
@@ -190,8 +181,11 @@ async function waitForDebugger(port: number): Promise<void> {
   const deadline = Date.now() + 10_000;
   while (Date.now() < deadline) {
     try {
-      const res = await fetch(`http://127.0.0.1:${port}/json/version`);
-      if (res.ok) return;
+      await fetchJson(
+        `http://127.0.0.1:${port}/json/version`,
+        Math.min(CDP_TIMEOUT_MS, deadline - Date.now()),
+      );
+      return;
     } catch {
       // Browser is still starting.
     }
@@ -201,29 +195,35 @@ async function waitForDebugger(port: number): Promise<void> {
 }
 
 async function readNpssoCookie(port: number): Promise<string | null> {
-  const targets = (await fetchJson(
-    `http://127.0.0.1:${port}/json/list`,
-  )) as CdpTarget[];
-  const page = targets.find(
-    (target) => target.type === "page" && target.webSocketDebuggerUrl,
-  );
-  if (!page?.webSocketDebuggerUrl) {
-    throw new Error("Could not find the browser page debugging target.");
+  const version = await fetchJson(`http://127.0.0.1:${port}/json/version`);
+  if (
+    !isRecord(version) ||
+    typeof version.webSocketDebuggerUrl !== "string" ||
+    !version.webSocketDebuggerUrl.trim()
+  ) {
+    throw new Error("Could not find the browser debugging target.");
   }
 
-  const socket = await openCdpSocket(page.webSocketDebuggerUrl);
+  const socket = await openCdpSocket(version.webSocketDebuggerUrl);
   try {
-    // Storage.getCookies is the non-deprecated replacement for the older
-    // Network.getAllCookies; both return every cookie in the browser context.
-    const response = await sendCdp<{ cookies: CdpCookie[] }>(
-      socket,
-      "Storage.getCookies",
-    );
-    const cookie = response.cookies.find(
-      (candidate) =>
-        candidate.name.toLowerCase() === "npsso" && candidate.value,
-    );
-    return cookie?.value ?? null;
+    // Read the default context's cookies through the browser target so this
+    // does not depend on an individual page responding to Storage commands.
+    const response = await sendCdp(socket, "Storage.getCookies");
+    if (!isRecord(response) || !Array.isArray(response.cookies)) {
+      throw new Error("Chrome DevTools returned an invalid cookie list.");
+    }
+    for (const cookie of response.cookies) {
+      if (
+        isRecord(cookie) &&
+        typeof cookie.name === "string" &&
+        cookie.name.toLowerCase() === "npsso" &&
+        typeof cookie.value === "string" &&
+        cookie.value
+      ) {
+        return cookie.value;
+      }
+    }
+    return null;
   } finally {
     socket.close();
   }
@@ -240,56 +240,136 @@ async function openCdpSocket(url: string): Promise<CdpSocket> {
   }
 
   const socket = new WebSocketCtor(url);
-  await new Promise<void>((resolve, reject) => {
-    socket.addEventListener("open", () => resolve(), { once: true });
-    socket.addEventListener(
-      "error",
-      (event) =>
-        reject(event.error ?? new Error("WebSocket connection failed.")),
-      { once: true },
-    );
-  });
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const cleanup = () => {
+        clearTimeout(timeout);
+        socket.removeEventListener("open", onOpen);
+        socket.removeEventListener("error", onError);
+        socket.removeEventListener("close", onClose);
+      };
+      const fail = (error: unknown) => {
+        cleanup();
+        reject(error);
+      };
+      const onOpen = () => {
+        cleanup();
+        resolve();
+      };
+      const onError: CdpListener = (event) =>
+        fail(
+          event.error ??
+            new Error("Chrome DevTools WebSocket connection failed."),
+        );
+      const onClose = () =>
+        fail(new Error("Chrome DevTools WebSocket closed before connecting."));
+      const timeout = setTimeout(
+        () => fail(new Error("Timed out connecting to Chrome DevTools.")),
+        CDP_TIMEOUT_MS,
+      );
+      socket.addEventListener("open", onOpen);
+      socket.addEventListener("error", onError);
+      socket.addEventListener("close", onClose);
+    });
+  } catch (error) {
+    socket.close();
+    throw error;
+  }
   return socket;
 }
 
-async function sendCdp<T>(socket: CdpSocket, method: string): Promise<T> {
-  const id = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER);
-  return new Promise<T>((resolve, reject) => {
-    const onMessage: CdpListener = (event) => {
-      const data = JSON.parse(String(event.data)) as {
-        id?: number;
-        result?: T;
-        error?: { message?: string };
-      };
-      if (data.id !== id) return;
+async function sendCdp(socket: CdpSocket, method: string): Promise<unknown> {
+  // Chrome requires a signed 32-bit command ID, not any JS safe integer.
+  const id = Math.floor(Math.random() * 0x7fffffff);
+  return new Promise((resolve, reject) => {
+    const fail = (error: unknown) => {
       cleanup();
-      if (data.error) {
-        reject(new Error(data.error.message ?? `${method} failed.`));
+      reject(error);
+    };
+    const onMessage: CdpListener = (event) => {
+      let data: unknown;
+      try {
+        data = JSON.parse(String(event.data));
+      } catch {
+        fail(new Error(`Invalid Chrome DevTools response to ${method}.`));
+        return;
+      }
+      if (!isRecord(data)) {
+        fail(new Error(`Invalid Chrome DevTools response to ${method}.`));
+        return;
+      }
+      // Ignore notifications and other commands' replies, but surface protocol
+      // errors that Chrome cannot associate with a valid command ID.
+      if (data.id !== id && !(data.id === undefined && "error" in data)) return;
+      cleanup();
+      if ("error" in data) {
+        const message =
+          isRecord(data.error) && typeof data.error.message === "string"
+            ? data.error.message
+            : `${method} failed.`;
+        reject(new Error(message));
+      } else if (!("result" in data)) {
+        reject(new Error(`Invalid Chrome DevTools response to ${method}.`));
       } else {
-        resolve(data.result as T);
+        resolve(data.result);
       }
     };
+    const onError: CdpListener = (event) =>
+      fail(
+        event.error ??
+          new Error(`Chrome DevTools WebSocket failed calling ${method}.`),
+      );
+    const onClose = () =>
+      fail(
+        new Error(`Chrome DevTools WebSocket closed while calling ${method}.`),
+      );
     const cleanup = () => {
       clearTimeout(timeout);
       socket.removeEventListener("message", onMessage);
+      socket.removeEventListener("error", onError);
+      socket.removeEventListener("close", onClose);
     };
     const timeout = setTimeout(() => {
       cleanup();
       reject(new Error(`Timed out calling Chrome DevTools ${method}.`));
-    }, 5_000);
+    }, CDP_TIMEOUT_MS);
     socket.addEventListener("message", onMessage);
-    socket.send(JSON.stringify({ id, method }));
+    socket.addEventListener("error", onError);
+    socket.addEventListener("close", onClose);
+    try {
+      socket.send(JSON.stringify({ id, method }));
+    } catch (error) {
+      fail(error);
+    }
   });
 }
 
-async function fetchJson(url: string): Promise<unknown> {
-  const res = await fetch(url);
-  if (!res.ok) {
-    throw new Error(
-      `Browser debugging endpoint failed with HTTP ${res.status}.`,
-    );
+async function fetchJson(
+  url: string,
+  timeoutMs = CDP_TIMEOUT_MS,
+): Promise<unknown> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    if (!res.ok) {
+      throw new Error(
+        `Browser debugging endpoint failed with HTTP ${res.status}.`,
+      );
+    }
+    return await res.json();
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new Error("Timed out contacting the browser debugging endpoint.");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
   }
-  return res.json();
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 async function cleanupActiveSession(): Promise<void> {
@@ -298,7 +378,13 @@ async function cleanupActiveSession(): Promise<void> {
   if (!session) return;
 
   session.browser.kill();
-  await rm(session.userDataDir, { recursive: true, force: true });
+  // Chrome can still write profile files briefly after receiving the signal.
+  await rm(session.userDataDir, {
+    recursive: true,
+    force: true,
+    maxRetries: 5,
+    retryDelay: 100,
+  });
 }
 
 function delay(ms: number): Promise<void> {

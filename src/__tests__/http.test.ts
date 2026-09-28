@@ -62,3 +62,78 @@ test("request tolerates empty response bodies", async () => {
   const client = new PsnHttpClient(tokens);
   assert.deepEqual(await client.request("/whatever"), {});
 });
+
+test("request surfaces GraphQL error messages on HTTP failures", async () => {
+  const body = {
+    errors: [
+      {
+        message:
+          "This operation has been blocked as a potential Cross-Site Request Forgery (CSRF).",
+        extensions: {},
+      },
+      { message: "Provide a non-empty apollo-require-preflight header." },
+    ],
+  };
+  globalThis.fetch = async () => Response.json(body, { status: 400 });
+
+  const client = new PsnHttpClient(tokens);
+  await assert.rejects(
+    client.request("/graphql/v1/op", { api: "web" }),
+    (error) => {
+      assert.ok(error instanceof PsnApiError);
+      assert.equal(error.status, 400);
+      assert.deepEqual(error.body, body);
+      for (const { message } of body.errors) {
+        assert.ok(error.message.includes(message));
+      }
+      return true;
+    },
+  );
+});
+
+test("request ignores malformed GraphQL errors and retains valid messages", async () => {
+  globalThis.fetch = async () =>
+    Response.json(
+      {
+        errors: [
+          null,
+          {},
+          { message: 123 },
+          { message: "" },
+          { message: "CSRF" },
+        ],
+      },
+      { status: 400 },
+    );
+  const client = new PsnHttpClient(tokens);
+  await assert.rejects(client.request("/graphql/v1/op", { api: "web" }), {
+    name: "PsnApiError",
+    message: "PSN API request to /graphql/v1/op failed with HTTP 400: CSRF",
+  });
+});
+
+test("request retains the HTTP error when no usable error message is present", async () => {
+  const client = new PsnHttpClient(tokens);
+  for (const body of [null, {}, { errors: [] }, { errors: "invalid" }]) {
+    globalThis.fetch = async () => Response.json(body, { status: 400 });
+    await assert.rejects(client.request("/graphql/v1/op", { api: "web" }), {
+      name: "PsnApiError",
+      message: "PSN API request to /graphql/v1/op failed with HTTP 400",
+    });
+  }
+});
+
+test("request uses GraphQL errors when the REST error message is malformed", async () => {
+  const client = new PsnHttpClient(tokens);
+  for (const message of [{ unexpected: "object" }, 123, true, "   "]) {
+    globalThis.fetch = async () =>
+      Response.json(
+        { error: { message }, errors: [{ message: "CSRF" }] },
+        { status: 400 },
+      );
+    await assert.rejects(client.request("/graphql/v1/op", { api: "web" }), {
+      name: "PsnApiError",
+      message: "PSN API request to /graphql/v1/op failed with HTTP 400: CSRF",
+    });
+  }
+});
