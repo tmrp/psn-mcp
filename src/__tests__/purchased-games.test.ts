@@ -30,6 +30,42 @@ const game = {
   membership: "NONE",
 };
 
+test("purchased games satisfies GraphQL CSRF prevention for GET requests", async () => {
+  globalThis.fetch = async (_input, init) => {
+    const headers = new Headers(init?.headers);
+    const contentType = headers.get("content-type")?.split(";")[0].trim();
+    const passesCsrfCheck =
+      (contentType &&
+        ![
+          "application/x-www-form-urlencoded",
+          "multipart/form-data",
+          "text/plain",
+        ].includes(contentType)) ||
+      headers.get("x-apollo-operation-name") ||
+      headers.get("apollo-require-preflight");
+    if (!passesCsrfCheck) {
+      return Response.json(
+        {
+          errors: [
+            {
+              message:
+                "This operation has been blocked as a potential Cross-Site Request Forgery (CSRF).",
+            },
+          ],
+        },
+        { status: 400 },
+      );
+    }
+    return Response.json({
+      data: { purchasedTitlesRetrieve: { games: [game] } },
+    });
+  };
+
+  assert.deepEqual(await api.getPurchasedGames({ includePlayTime: false }), {
+    games: [game],
+  });
+});
+
 test("purchased games uses authenticated web GraphQL and retains all metadata", async () => {
   const pageInfo = { isLast: false, offset: 0, size: 50, totalCount: 75 };
   globalThis.fetch = async (input, init) => {

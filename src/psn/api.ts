@@ -203,6 +203,8 @@ export class PsnApi {
       "/graphql/v1/op",
       {
         api: "web",
+        // Apollo's CSRF protection also requires a header on bodyless GETs.
+        headers: { "apollo-require-preflight": "true" },
         query: {
           operationName: "getPurchasedGameList",
           variables: JSON.stringify({

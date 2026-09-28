@@ -59,8 +59,24 @@ export class PsnHttpClient {
       let message = `PSN API request to ${path} failed with HTTP ${res.status}`;
       try {
         body = await res.json();
-        const err = (body as { error?: { message?: string } }).error;
-        if (err?.message) message += `: ${err.message}`;
+        const errorBody = body as {
+          error?: { message?: unknown };
+          errors?: { message?: unknown }[];
+        };
+        const restMessage = errorBody?.error?.message;
+        const detail =
+          typeof restMessage === "string" && restMessage.trim()
+            ? restMessage
+            : Array.isArray(errorBody?.errors)
+              ? errorBody.errors
+                  .map((error) => error?.message)
+                  .filter(
+                    (message): message is string =>
+                      typeof message === "string" && message.trim().length > 0,
+                  )
+                  .join("; ")
+              : undefined;
+        if (detail) message += `: ${detail}`;
       } catch {
         // Non-JSON error body; keep the generic message.
       }
