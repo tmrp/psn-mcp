@@ -2,7 +2,11 @@ import { PsnHttpClient } from "./http.js";
 import type {
   BasicPresence,
   FriendsResponse,
+  PlayedGame,
   PlayedGamesResponse,
+  PurchasedGame,
+  PurchasedGamesPageInfo,
+  PurchasedGamesResponse,
   TrophiesResponse,
   TrophySummary,
   TrophyTitlesResponse,
@@ -12,8 +16,33 @@ import type {
 
 export type NpServiceName = "trophy" | "trophy2";
 
+export interface PurchasedGamesOptions {
+  limit?: number;
+  offset?: number;
+  platform?: Array<"ps4" | "ps5">;
+  isActive?: boolean;
+  membership?: "NONE" | "PS_PLUS";
+  sortDirection?: "asc" | "desc";
+  includePlayTime?: boolean;
+}
+
+// Sony's library accepts persisted queries only. Reference:
+// https://github.com/achievements-app/psn-api/blob/main/src/graphql/operationHashes.ts
+const PURCHASED_GAMES_QUERY_HASH =
+  "827a423f6a8ddca4107ac01395af2ec0eafd8396fc7fa204aaf9b7ed2eefa168";
+
+interface PurchasedGamesGraphqlResponse {
+  data?: {
+    purchasedTitlesRetrieve?: {
+      games: PurchasedGame[];
+      pageInfo?: PurchasedGamesPageInfo | null;
+    } | null;
+  } | null;
+  errors?: Array<{ message?: string }>;
+}
+
 /**
- * Typed wrappers around the PSN mobile API endpoints.
+ * Typed wrappers around the PSN mobile and web API endpoints.
  *
  * User-scoped endpoints accept the literal string "me" (the authenticated
  * account) or a numeric account id. Use {@link resolveAccountId} to turn an
@@ -156,6 +185,124 @@ export class PsnApi {
   }
 
   // ---- Game library ------------------------------------------------------
+
+  /** Digital purchases for the authenticated account, including unplayed games. */
+  async getPurchasedGames(
+    options: PurchasedGamesOptions = {},
+  ): Promise<PurchasedGamesResponse> {
+    const {
+      limit = 50,
+      offset = 0,
+      platform = ["ps4", "ps5"],
+      isActive = true,
+      membership,
+      sortDirection = "desc",
+      includePlayTime = true,
+    } = options;
+    const response = await this.http.request<PurchasedGamesGraphqlResponse>(
+      "/graphql/v1/op",
+      {
+        api: "web",
+        query: {
+          operationName: "getPurchasedGameList",
+          variables: JSON.stringify({
+            isActive,
+            platform,
+            size: limit,
+            start: offset,
+            sortBy: "ACTIVE_DATE",
+            sortDirection,
+            membership,
+          }),
+          extensions: JSON.stringify({
+            persistedQuery: {
+              version: 1,
+              sha256Hash: PURCHASED_GAMES_QUERY_HASH,
+            },
+          }),
+        },
+      },
+    );
+
+    // GraphQL can report failures (including expired query hashes) with HTTP 200.
+    if (response?.errors?.length) {
+      const details = response.errors
+        .map((error) => error.message)
+        .filter(Boolean)
+        .join("; ");
+      throw new Error(
+        `PSN purchased games query failed: ${details || "Unknown GraphQL error"}`,
+      );
+    }
+    const library = response?.data?.purchasedTitlesRetrieve;
+    if (!library || !Array.isArray(library.games)) {
+      throw new Error("PSN purchased games query returned no valid game list.");
+    }
+
+    const { games } = library;
+    const pageInfo = library.pageInfo ?? undefined;
+    const hasMore = pageInfo ? !pageInfo.isLast : games.length === limit;
+    const nextOffset = pageInfo
+      ? pageInfo.offset + pageInfo.size
+      : offset + games.length;
+    const result: PurchasedGamesResponse = {
+      games,
+      ...(pageInfo ? { pageInfo, totalItemCount: pageInfo.totalCount } : {}),
+      ...(hasMore && games.length > 0 && nextOffset > offset
+        ? { nextOffset }
+        : {}),
+    };
+    if (includePlayTime && games.length > 0) {
+      try {
+        result.games = await this.addPlayTime(games);
+      } catch (error) {
+        result.playTimeError =
+          "Play time unavailable: " +
+          (error instanceof Error ? error.message : String(error));
+      }
+    }
+    return result;
+  }
+
+  /** Scan play history until every purchased title is matched or history ends. */
+  private async addPlayTime(games: PurchasedGame[]): Promise<PurchasedGame[]> {
+    const remaining = new Set(games.map((game) => game.titleId));
+    const matches = new Map<string, PlayedGame>();
+    let offset = 0;
+    while (remaining.size > 0) {
+      const page = await this.getPlayedGames("me", 200, offset);
+      if (
+        !Array.isArray(page?.titles) ||
+        !Number.isInteger(page.totalItemCount) ||
+        page.totalItemCount < 0
+      ) {
+        throw new Error("PSN play history returned no valid game list.");
+      }
+      for (const title of page.titles) {
+        // Exact IDs keep different platforms and editions separate.
+        if (remaining.delete(title.titleId)) matches.set(title.titleId, title);
+      }
+      if (remaining.size === 0 || page.titles.length === 0) break;
+
+      const nextOffset = page.nextOffset ?? offset + page.titles.length;
+      if (nextOffset >= page.totalItemCount) break;
+      if (!Number.isInteger(nextOffset) || nextOffset <= offset) {
+        throw new Error("PSN play history returned invalid pagination.");
+      }
+      offset = nextOffset;
+    }
+    return games.map((game) => {
+      const played = matches.get(game.titleId);
+      if (!played) return game;
+      return {
+        ...game,
+        playDuration: played.playDuration,
+        playCount: played.playCount,
+        firstPlayedDateTime: played.firstPlayedDateTime,
+        lastPlayedDateTime: played.lastPlayedDateTime,
+      };
+    });
+  }
 
   getPlayedGames(
     accountId: string,

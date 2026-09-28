@@ -28,6 +28,7 @@ const EXPECTED_TOOLS = [
   "psn_get_title_trophies",
   "psn_get_earned_trophies",
   "psn_get_played_games",
+  "psn_get_purchased_games",
   "psn_get_store_deals",
   "psn_get_store_product",
   "psn_search_store",
@@ -91,10 +92,10 @@ class TestTransport implements Transport {
   }
 }
 
-function buildTestServer() {
+function buildTestServer(psn = {} as PsnApi) {
   return createPsnMcpServer(
     "test-version",
-    {} as PsnApi,
+    psn,
     new PsnStore(),
     new TokenManager(),
   );
@@ -144,6 +145,103 @@ test("stdio serves legacy clients and lists all tools", async () => {
 
     assert.deepEqual(toolNames(tools), EXPECTED_TOOLS);
     assert.equal("ttlMs" in tools, false);
+  } finally {
+    await handle.close();
+  }
+});
+
+test("purchased-games tool applies defaults, validates inputs, and reports API errors", async () => {
+  const calls: unknown[] = [];
+  let fail = false;
+  const library = {
+    games: [
+      { titleId: "PPSA00001_00", name: "Unplayed game", isPreOrder: true },
+    ],
+    nextOffset: 50,
+  };
+  const psn = {
+    getPurchasedGames: async (options: unknown) => {
+      calls.push(options);
+      if (fail) throw new Error("PSN library unavailable");
+      return library;
+    },
+  } as unknown as PsnApi;
+  const transport = new TestTransport();
+  const handle = serveStdio(() => buildTestServer(psn), { transport });
+  let id = 0;
+  const callTool = async (args: Record<string, unknown>) =>
+    resultOf(
+      await transport.request({
+        jsonrpc: "2.0",
+        id: ++id,
+        method: "tools/call",
+        params: {
+          name: "psn_get_purchased_games",
+          arguments: args,
+          _meta: {
+            [PROTOCOL_VERSION_META_KEY]: "2026-07-28",
+            [CLIENT_INFO_META_KEY]: { name: "library-test", version: "1.0.0" },
+            [CLIENT_CAPABILITIES_META_KEY]: {},
+          },
+        },
+      } as JSONRPCMessage),
+    );
+
+  try {
+    await transport.started;
+    const result = await callTool({});
+    assert.deepEqual(calls, [
+      {
+        limit: 50,
+        offset: 0,
+        platform: ["ps4", "ps5"],
+        isActive: true,
+        sortDirection: "desc",
+        includePlayTime: true,
+      },
+    ]);
+    assert.deepEqual(
+      JSON.parse((result.content as Array<{ text: string }>)[0].text),
+      library,
+    );
+
+    const options = {
+      limit: 10,
+      offset: 20,
+      platform: ["ps4"],
+      isActive: false,
+      membership: "NONE",
+      sortDirection: "asc",
+      includePlayTime: false,
+    };
+    await callTool(options);
+    assert.deepEqual(calls[1], options);
+
+    for (const invalid of [
+      { limit: 0 },
+      { limit: 101 },
+      { limit: 1.5 },
+      { offset: -1 },
+      { offset: 0.5 },
+      { platform: [] },
+      { platform: ["ps3"] },
+      { membership: "invalid" },
+      { sortDirection: "invalid" },
+      { isActive: "true" },
+      { includePlayTime: "true" },
+    ]) {
+      const result = await callTool(invalid);
+      assert.equal(result.isError, true);
+    }
+    assert.equal(calls.length, 2, "invalid input must not call PSN");
+
+    fail = true;
+    const error = await callTool({});
+    assert.equal(error.isError, true);
+    assert.match(
+      (error.content as Array<{ text: string }>)[0].text,
+      /PSN library unavailable/,
+    );
   } finally {
     await handle.close();
   }
