@@ -1,5 +1,11 @@
 # psn-mcp
 
+## 0.5.2
+
+### Patch Changes
+
+- [#64](https://github.com/tmrp/psn-mcp/pull/64) [`c068e08`](https://github.com/tmrp/psn-mcp/commit/c068e08cdebfe3028b5f3e8b51221318d0f5e386) Thanks [@tmrp](https://github.com/tmrp)! - Fix purchased games returning an empty library for membership NONE by filtering unfiltered library pages locally. Apply pagination and play-time enrichment to matching entitlements, look ahead before returning nextOffset, and return exact totals only after reaching the end of the library. Clarify that NONE includes free entitlements and does not imply a paid purchase.
+
 ## 0.5.1
 
 ### Patch Changes
