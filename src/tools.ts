@@ -403,6 +403,50 @@ export function registerTools(
     ),
   );
 
+  server.registerTool(
+    "psn_get_purchased_games",
+    {
+      title: "Get purchased games",
+      description:
+        "List the authenticated account's digital PS4/PS5 game library, including " +
+        "games never played. Returns names, artwork, platforms, product/title/entitlement " +
+        "ids, and available active, downloadable, pre-order, and membership metadata. " +
+        "May include free and PS Plus entitlements; this is not a payment history. " +
+        "Only your own account is supported. Sorted by activation date, newest first " +
+        "by default. Pass the returned nextOffset as offset to get another page. " +
+        "Includes available play duration, play count, and first/last played dates " +
+        "by title ID by default. Set includePlayTime to false to skip the lookup. " +
+        "Missing play time does not imply zero time played.",
+      inputSchema: z.object({
+        limit: z.number().int().min(1).max(100).default(50),
+        offset: z.number().int().min(0).default(0),
+        platform: z
+          .array(z.enum(["ps4", "ps5"]))
+          .min(1)
+          .max(2)
+          .default(["ps4", "ps5"]),
+        isActive: z
+          .boolean()
+          .default(true)
+          .describe("Filter by active (true) or inactive (false) licenses."),
+        membership: z
+          .enum(["NONE", "PS_PLUS"])
+          .optional()
+          .describe("Filter membership; omit to include all membership types."),
+        sortDirection: z.enum(["asc", "desc"]).default("desc"),
+        includePlayTime: z
+          .boolean()
+          .default(true)
+          .describe(
+            "Also look up play history (may require several requests). Durations are " +
+              "ISO 8601 strings, e.g. PT12H30M. Lookup failures return playTimeError " +
+              "alongside the purchased games.",
+          ),
+      }),
+    },
+    handle((options) => psn.getPurchasedGames(options)),
+  );
+
   // ---- PlayStation Store (no PSN account required) -----------------------
 
   server.registerTool(

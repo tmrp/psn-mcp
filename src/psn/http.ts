@@ -1,6 +1,9 @@
 import type { TokenManager } from "./auth.js";
 
-const API_BASE = "https://m.np.playstation.com/api";
+const API_BASES = {
+  mobile: "https://m.np.playstation.com/api",
+  web: "https://web.np.playstation.com/api",
+};
 
 export class PsnApiError extends Error {
   constructor(
@@ -14,6 +17,8 @@ export class PsnApiError extends Error {
 }
 
 export interface RequestOptions {
+  /** Sony API host; account REST endpoints use mobile, library GraphQL uses web. */
+  api?: keyof typeof API_BASES;
   method?: "GET" | "POST";
   /** Query string parameters; undefined values are dropped. */
   query?: Record<string, string | number | boolean | undefined>;
@@ -23,14 +28,14 @@ export interface RequestOptions {
   headers?: Record<string, string>;
 }
 
-/** Authenticated JSON client for the m.np.playstation.com API. */
+/** Authenticated JSON client for Sony's mobile and web APIs. */
 export class PsnHttpClient {
   constructor(private readonly tokens: TokenManager) {}
 
   async request<T>(path: string, options: RequestOptions = {}): Promise<T> {
     const accessToken = await this.tokens.getAccessToken();
 
-    const url = new URL(`${API_BASE}${path}`);
+    const url = new URL(`${API_BASES[options.api ?? "mobile"]}${path}`);
     for (const [key, value] of Object.entries(options.query ?? {})) {
       if (value !== undefined) url.searchParams.set(key, String(value));
     }

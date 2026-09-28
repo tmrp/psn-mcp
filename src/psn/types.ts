@@ -136,3 +136,41 @@ export interface PlayedGamesResponse {
   totalItemCount: number;
   nextOffset?: number;
 }
+
+/** A digital library entitlement, which may include free or PS Plus games. */
+export interface PurchasedGame {
+  titleId: string;
+  name: string;
+  platform: string;
+  productId: string;
+  entitlementId: string;
+  conceptId?: string | null;
+  image?: { url: string } | null;
+  isActive?: boolean;
+  isDownloadable?: boolean;
+  isPreOrder?: boolean;
+  membership?: string | null;
+  /** Optional play-history fields, populated when includePlayTime is requested. */
+  playDuration?: string;
+  playCount?: number;
+  firstPlayedDateTime?: string;
+  lastPlayedDateTime?: string;
+}
+
+export interface PurchasedGamesPageInfo {
+  isLast: boolean;
+  offset: number;
+  size: number;
+  totalCount: number;
+}
+
+export interface PurchasedGamesResponse {
+  games: PurchasedGame[];
+  /** Library results are still returned if the optional play-history lookup fails. */
+  playTimeError?: string;
+  /** Present only when Sony returns pagination metadata. */
+  pageInfo?: PurchasedGamesPageInfo;
+  totalItemCount?: number;
+  /** If Sony omits pageInfo, a full page may be followed by an empty page. */
+  nextOffset?: number;
+}
