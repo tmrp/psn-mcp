@@ -190,6 +190,26 @@ export class PsnApi {
   async getPurchasedGames(
     options: PurchasedGamesOptions = {},
   ): Promise<PurchasedGamesResponse> {
+    const result =
+      options.membership === "NONE"
+        ? await this.getPurchasedGamesWithoutPsPlus(options)
+        : await this.getPurchasedGamesPage(options);
+    if ((options.includePlayTime ?? true) && result.games.length > 0) {
+      try {
+        result.games = await this.addPlayTime(result.games);
+      } catch (error) {
+        result.playTimeError =
+          "Play time unavailable: " +
+          (error instanceof Error ? error.message : String(error));
+      }
+    }
+    return result;
+  }
+
+  /** Fetch one raw library page without play-history enrichment. */
+  private async getPurchasedGamesPage(
+    options: PurchasedGamesOptions,
+  ): Promise<PurchasedGamesResponse> {
     const {
       limit = 50,
       offset = 0,
@@ -197,7 +217,6 @@ export class PsnApi {
       isActive = true,
       membership,
       sortDirection = "desc",
-      includePlayTime = true,
     } = options;
     const response = await this.http.request<PurchasedGamesGraphqlResponse>(
       "/graphql/v1/op",
@@ -247,23 +266,85 @@ export class PsnApi {
     const nextOffset = pageInfo
       ? pageInfo.offset + pageInfo.size
       : offset + games.length;
-    const result: PurchasedGamesResponse = {
+    return {
       games,
       ...(pageInfo ? { pageInfo, totalItemCount: pageInfo.totalCount } : {}),
       ...(hasMore && games.length > 0 && nextOffset > offset
         ? { nextOffset }
         : {}),
     };
-    if (includePlayTime && games.length > 0) {
-      try {
-        result.games = await this.addPlayTime(games);
-      } catch (error) {
-        result.playTimeError =
-          "Play time unavailable: " +
-          (error instanceof Error ? error.message : String(error));
+  }
+
+  /** Sony accepts NONE but returns an empty library, so filter raw pages here. */
+  private async getPurchasedGamesWithoutPsPlus(
+    options: PurchasedGamesOptions,
+  ): Promise<PurchasedGamesResponse> {
+    const { limit = 50, offset = 0 } = options;
+    const rawPageSize = 100;
+    const games: PurchasedGame[] = [];
+    let matchedCount = 0;
+    let rawOffset = 0;
+
+    while (true) {
+      const page = await this.getPurchasedGamesPage({
+        ...options,
+        membership: undefined,
+        limit: rawPageSize,
+        offset: rawOffset,
+      });
+      const info = page.pageInfo;
+      if (
+        info &&
+        (typeof info.isLast !== "boolean" ||
+          info.offset !== rawOffset ||
+          !Number.isSafeInteger(info.size) ||
+          info.size < 0 ||
+          !Number.isSafeInteger(info.totalCount) ||
+          info.totalCount < 0 ||
+          (!info.isLast && (info.size === 0 || page.games.length === 0)))
+      ) {
+        throw new Error("PSN purchased games returned invalid pagination.");
       }
+
+      for (const game of page.games) {
+        if (game?.membership !== "NONE") continue;
+        if (matchedCount >= offset && games.length < limit) games.push(game);
+        matchedCount++;
+      }
+
+      const exhausted = info ? info.isLast : page.games.length < rawPageSize;
+      const hasMore = matchedCount > offset + games.length;
+      // Look ahead for an actual matching entitlement before exposing nextOffset.
+      // Only a completed scan can supply the exact filtered total and pageInfo.
+      if (exhausted || hasMore) {
+        return {
+          games,
+          ...(hasMore ? { nextOffset: offset + games.length } : {}),
+          ...(exhausted
+            ? {
+                totalItemCount: matchedCount,
+                pageInfo: {
+                  offset,
+                  size: limit,
+                  totalCount: matchedCount,
+                  isLast: !hasMore,
+                },
+              }
+            : {}),
+        };
+      }
+
+      const nextOffset = page.nextOffset;
+      if (
+        nextOffset === undefined ||
+        !Number.isSafeInteger(nextOffset) ||
+        nextOffset <= rawOffset ||
+        (info && nextOffset >= info.totalCount)
+      ) {
+        throw new Error("PSN purchased games returned invalid pagination.");
+      }
+      rawOffset = nextOffset;
     }
-    return result;
   }
 
   /** Scan play history until every purchased title is matched or history ends. */
