@@ -1,5 +1,11 @@
 # psn-mcp
 
+## 0.5.3
+
+### Patch Changes
+
+- [#59](https://github.com/tmrp/psn-mcp/pull/59) [`543d5a3`](https://github.com/tmrp/psn-mcp/commit/543d5a34514ef3bde1bb4d31c2988783992c9a5f) Thanks [@dependabot](https://github.com/apps/dependabot)! - Update internal dependencies
+
 ## 0.5.2
 
 ### Patch Changes
