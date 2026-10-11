@@ -1,5 +1,11 @@
 # psn-mcp
 
+## 0.5.5
+
+### Patch Changes
+
+- [#73](https://github.com/tmrp/psn-mcp/pull/73) [`62022d5`](https://github.com/tmrp/psn-mcp/commit/62022d55a4f5273021751d88921232c28463dab1) Thanks [@tmrp](https://github.com/tmrp)! - Add security-gated Dependabot changesets, dependency update merging, and automated dependency-only releases.
+
 ## 0.5.4
 
 ### Patch Changes
