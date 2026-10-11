@@ -73,3 +73,52 @@ jobs:
           # Configure npm trusted publishing for the psn-mcp package and this workflow.
           # NODE_AUTH_TOKEN requires an npm granular access token with publish permission.
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # Changesets can publish successfully while its locally created tag never
+      # reaches GitHub. Reconcile the tag and release on every successful run.
+      # Only operate on versions already present on npm, and never retarget a tag.
+      - name: Synchronize published GitHub release
+        if: ${{ success() }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('./package.json').version")
+          tag="v${version}"
+          published=$(npm view "psn-mcp@${version}" version --json 2>/dev/null || true)
+          if [[ "${published//\"/}" != "${version}" ]]; then
+            echo "Version ${version} is not confirmed on npm; skipping GitHub release."
+            exit 0
+          fi
+
+          git fetch origin --tags
+          if git show-ref --verify --quiet "refs/tags/${tag}"; then
+            tag_sha=$(git rev-list -n 1 "${tag}")
+            if [[ "${tag_sha}" != "$(git rev-parse HEAD)" ]]; then
+              echo "::error::Existing tag ${tag} points to ${tag_sha}, not HEAD. Refusing to retarget."
+              exit 1
+            fi
+          else
+            git tag "${tag}" HEAD
+            git push origin "refs/tags/${tag}"
+          fi
+
+          if gh release view "${tag}" >/dev/null 2>&1; then
+            echo "GitHub release ${tag} already exists."
+            exit 0
+          fi
+
+          # Use the version's existing changelog section as release notes.
+          node --input-type=module <<'NODE' > /tmp/psn-mcp-release-notes.md
+          import { readFileSync } from 'node:fs';
+          const version = JSON.parse(readFileSync('package.json', 'utf8')).version;
+          const changelog = readFileSync('CHANGELOG.md', 'utf8');
+          const heading = `## ${version}`;
+          const start = changelog.indexOf(heading + '\n');
+          if (start === -1) throw new Error(`Missing changelog entry for ${version}`);
+          const from = start + heading.length + 1;
+          const next = changelog.indexOf('\n## ', from);
+          process.stdout.write(changelog.slice(from, next === -1 ? undefined : next).trim() + '\n');
+          NODE
+          gh release create "${tag}" --title "${tag}" --notes-file /tmp/psn-mcp-release-notes.md --verify-tag
