@@ -21,18 +21,30 @@ jobs:
     name: Release
     runs-on: ubuntu-latest
     steps:
+      - name: Create scoped release PR token
+        if: vars.DEPENDABOT_AUTOMATION_APP_ID != ''
+        id: app
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        with:
+          app-id: ${{ vars.DEPENDABOT_AUTOMATION_APP_ID }}
+          private-key: ${{ secrets.DEPENDABOT_AUTOMATION_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
+          # Subsequent changesets git pushes must also use the App credential.
+          token: ${{ steps.app.outputs.token || secrets.GITHUB_TOKEN }}
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v6
+        uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6
         with:
           version: 10
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           cache: pnpm
           node-version: 24
@@ -60,14 +72,15 @@ jobs:
       # (when changesets are pending) or publishes to npm (once that PR is
       # merged and the changesets are consumed).
       - name: Create Release PR or Publish
-        uses: changesets/action@v1
+        uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d # v1.9.0
         with:
           version: pnpm run version:packages
           publish: pnpm release
           commit: "chore(release): version packages"
           title: "chore(release): version packages"
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # App-created release PRs trigger CI; GITHUB_TOKEN-created PRs do not.
+          GITHUB_TOKEN: ${{ steps.app.outputs.token || secrets.GITHUB_TOKEN }}
           NPM_CONFIG_PROVENANCE: true
           # Optional fallback when npm trusted publishing is not configured.
           # Configure npm trusted publishing for the psn-mcp package and this workflow.
@@ -93,10 +106,15 @@ jobs:
           fi
 
           git fetch origin --tags
+          if gh release view "${tag}" >/dev/null 2>&1; then
+            echo "GitHub release ${tag} already exists."
+            exit 0
+          fi
           if git show-ref --verify --quiet "refs/tags/${tag}"; then
             tag_sha=$(git rev-list -n 1 "${tag}")
-            if [[ "${tag_sha}" != "$(git rev-parse HEAD)" ]]; then
-              echo "::error::Existing tag ${tag} points to ${tag_sha}, not HEAD. Refusing to retarget."
+            tagged_version=$(git show "${tag_sha}:package.json" | node -p "JSON.parse(require('fs').readFileSync(0, 'utf8')).version")
+            if [[ "${tagged_version}" != "${version}" ]]; then
+              echo "::error::Existing tag ${tag} has package version ${tagged_version}. Refusing to retarget."
               exit 1
             fi
           else

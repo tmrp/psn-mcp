@@ -9,6 +9,12 @@ updates:
     directory: "/" # Location of package manifests
     schedule:
       interval: "weekly"
+    # The workflow independently verifies the age of every resolved update,
+    # including transitives and security PRs. Urgent fixes can be reviewed manually.
+    cooldown:
+      default-days: 14
+      semver-minor-days: 14
+      semver-patch-days: 14
     groups:
       patch-updates:
         applies-to: version-updates
