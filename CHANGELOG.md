@@ -1,5 +1,11 @@
 # psn-mcp
 
+## 0.5.7
+
+### Patch Changes
+
+- [#71](https://github.com/tmrp/psn-mcp/pull/71) [`94a243e`](https://github.com/tmrp/psn-mcp/commit/94a243e1b859ecd6371c9cd13a5408e16cddca15) Thanks [@dependabot](https://github.com/apps/dependabot)! - chore(deps): bump shell-quote from 1.10.0 to 1.12.0
+
 ## 0.5.6
 
 ### Patch Changes
