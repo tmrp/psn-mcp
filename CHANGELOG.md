@@ -1,5 +1,11 @@
 # psn-mcp
 
+## 0.5.6
+
+### Patch Changes
+
+- [#77](https://github.com/tmrp/psn-mcp/pull/77) [`151c1ef`](https://github.com/tmrp/psn-mcp/commit/151c1ef2a92bfdc5c2e9d1737ff19219aa85f465) Thanks [@tmrp](https://github.com/tmrp)! - Update node to lts
+
 ## 0.5.5
 
 ### Patch Changes
