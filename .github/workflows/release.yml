@@ -75,6 +75,7 @@ jobs:
       # publishes by parsing CLI v2 log output, so with CLI v3 it silently
       # skipped pushing tags and creating GitHub releases.
       - name: Create Release PR or Publish
+        id: changesets
         uses: changesets/action@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
         with:
           version-script: pnpm run version:packages
@@ -94,8 +95,10 @@ jobs:
       # Changesets can publish successfully while its locally created tag never
       # reaches GitHub. Reconcile the tag and release on every successful run.
       # Only operate on versions already present on npm, and never retarget a tag.
+      # Skip version-PR runs: the action leaves the checkout on the unpublished
+      # changeset-release branch, whose version is not on npm yet.
       - name: Synchronize published GitHub release
-        if: ${{ success() }}
+        if: ${{ success() && steps.changesets.outputs.has-changesets == 'false' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
@@ -119,11 +122,13 @@ jobs:
             sleep 30
           done
 
-          git fetch origin --tags
           if gh release view "${tag}" >/dev/null 2>&1; then
             echo "GitHub release ${tag} already exists."
             exit 0
           fi
+          # The action pushes a lightweight tag through the API while `changeset
+          # publish` leaves an annotated local tag; let the remote tag win.
+          git fetch --force origin --tags
           if git show-ref --verify --quiet "refs/tags/${tag}"; then
             tag_sha=$(git rev-list -n 1 "${tag}")
             tagged_version=$(git show "${tag_sha}:package.json" | node -p "JSON.parse(require('fs').readFileSync(0, 'utf8')).version")
