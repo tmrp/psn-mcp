@@ -12,16 +12,33 @@ permissions:
   checks: read
   pull-requests: read
 
+# Superseded pending runs are cancelled, so every run sweeps all candidate PRs.
 concurrency:
   group: dependabot-automation
   cancel-in-progress: false
 
 jobs:
   automate:
-    if: vars.DEPENDABOT_AUTOMATION_APP_ID != '' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.head_repository.full_name == github.repository
+    # PR completions and main pushes only wake the sweep; it re-verifies every PR.
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      (github.event.workflow_run.event == 'pull_request' ||
+      (github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main'))
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      # Fail visibly instead of skipping, so a missing App setup is noticed.
+      - name: Require automation App configuration
+        env:
+          APP_ID: ${{ vars.DEPENDABOT_AUTOMATION_APP_ID }}
+          HAS_PRIVATE_KEY: ${{ secrets.DEPENDABOT_AUTOMATION_PRIVATE_KEY != '' }}
+        run: |
+          if [[ -z "${APP_ID}" || "${HAS_PRIVATE_KEY}" != "true" ]]; then
+            echo "::error title=Dependabot automation is not configured::Set the DEPENDABOT_AUTOMATION_APP_ID variable and the DEPENDABOT_AUTOMATION_PRIVATE_KEY Actions secret (see .github/DEPENDABOT_AUTOMATION.md). If both are set, also add the key as a Dependabot secret."
+            exit 1
+          fi
+
       - name: Checkout trusted main
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:

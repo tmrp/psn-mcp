@@ -47,34 +47,27 @@ function isDependencyBatch(entries) {
   );
 }
 
-module.exports = async function automate({ github, context, core }) {
-  const repo = context.repo;
-  const run = context.payload.workflow_run;
-  if (
-    run.event !== "pull_request" ||
-    run.head_repository?.full_name !== `${repo.owner}/${repo.repo}`
-  )
-    return;
-  const candidates = await github.paginate(github.rest.pulls.list, {
-    ...repo,
-    state: "open",
-    base: "main",
-    per_page: 100,
-  });
-  const pr = candidates.find(
-    (item) =>
-      item.head.sha === run.head_sha &&
-      (item.user.login === "dependabot[bot]" ||
-        (item.head.ref === "changeset-release/main" &&
-          item.user.type === "Bot")),
+// Completions only wake the controller; it re-verifies every PR itself.
+function isTrustedTrigger(run, repo) {
+  return (
+    run?.head_repository?.full_name === `${repo.owner}/${repo.repo}` &&
+    (run.event === "pull_request" ||
+      (run.event === "push" && run.head_branch === "main"))
   );
-  if (
-    !pr ||
-    pr.draft ||
-    pr.head.repo?.full_name !== `${repo.owner}/${repo.repo}`
-  )
-    return;
+}
 
+function isCandidate(pr, repo) {
+  return (
+    !pr.draft &&
+    pr.head.repo?.full_name === `${repo.owner}/${repo.repo}` &&
+    (pr.user.login === "dependabot[bot]" ||
+      (pr.head.ref === "changeset-release/main" && pr.user.type === "Bot"))
+  );
+}
+
+// Returns true after merging: main moved, so the rest wait for the next sweep.
+async function processPullRequest({ github, core, repo, pr, baseSha }) {
+  const log = (message) => core.info(`PR #${pr.number}: ${message}`);
   const runs = await github.paginate(
     github.rest.actions.listWorkflowRunsForRepo,
     { ...repo, head_sha: pr.head.sha, event: "pull_request", per_page: 100 },
@@ -82,32 +75,43 @@ module.exports = async function automate({ github, context, core }) {
   const dependency = pr.user.login === "dependabot[bot]";
   const required = dependency ? workflowPaths : workflowPaths.slice(0, 1);
   if (!required.every((path) => latestSuccessful(runs, path, pr.head.sha))) {
-    core.info(
-      "Waiting for successful CI/security checks on this exact head commit.",
-    );
-    return;
-  }
-  const { data: ref } = await github.rest.git.getRef({
-    ...repo,
-    ref: "heads/main",
-  });
-  const baseSha = ref.object.sha;
-  const { data: comparison } = await github.rest.repos.compareCommits({
-    ...repo,
-    base: baseSha,
-    head: pr.head.sha,
-  });
-  if (comparison.status !== "ahead") {
-    core.info(
-      "PR must include current main. Ask Dependabot to rebase, then rerun the checks.",
-    );
-    return;
+    log("Waiting for successful CI/security checks on this exact head commit.");
+    return false;
   }
   const files = await github.paginate(github.rest.pulls.listFiles, {
     ...repo,
     pull_number: pr.number,
     per_page: 100,
   });
+  if (dependency) validateFiles(files, pr.number);
+  const { data: comparison } = await github.rest.repos.compareCommits({
+    ...repo,
+    base: baseSha,
+    head: pr.head.sha,
+  });
+  if (comparison.status !== "ahead") {
+    if (!dependency) {
+      log("Waiting for Changesets to rebuild the release PR on current main.");
+      return false;
+    }
+    // Strict branch protection requires current main. The skip marker keeps
+    // Dependabot able to rebase over this commit when its lockfile conflicts.
+    try {
+      await github.rest.repos.merge({
+        ...repo,
+        base: pr.head.ref,
+        head: baseSha,
+        commit_message: `chore: merge main into Dependabot PR #${pr.number} [dependabot skip]`,
+      });
+      log("Merged current main; the new commit must pass fresh checks.");
+    } catch (error) {
+      core.warning(
+        `PR #${pr.number} could not be updated with main (${error.message}). ` +
+          "Dependabot rebases conflicting PRs itself; otherwise comment `@dependabot recreate`.",
+      );
+    }
+    return false;
+  }
   const getText = async (path, sha) => {
     const { data } = await github.rest.repos.getContent({
       ...repo,
@@ -125,7 +129,6 @@ module.exports = async function automate({ github, context, core }) {
   };
 
   if (dependency) {
-    validateFiles(files, pr.number);
     const before = JSON.parse((await getText("package.json", baseSha)).text);
     const after = JSON.parse((await getText("package.json", pr.head.sha)).text);
     validateManifest(before, after);
@@ -146,13 +149,13 @@ module.exports = async function automate({ github, context, core }) {
         ...repo,
         path,
         branch: pr.head.ref,
-        message: `chore: add changeset for Dependabot PR #${pr.number}`,
+        message: `chore: add changeset for Dependabot PR #${pr.number} [dependabot skip]`,
         content: Buffer.from(expected).toString("base64"),
       });
-      core.info(
+      log(
         "Changeset added. Its new commit must pass fresh CI/security checks before merging.",
       );
-      return;
+      return false;
     }
     assert.equal(
       (await getText(path, pr.head.sha)).text,
@@ -177,8 +180,8 @@ module.exports = async function automate({ github, context, core }) {
         })),
       )
     ) {
-      core.info("Release contains manual changesets; leaving it for review.");
-      return;
+      log("Release contains manual changesets; leaving it for review.");
+      return false;
     }
     execFileSync("pnpm", ["run", "version:packages"], { stdio: "inherit" });
     const expectedPaths = execFileSync("git", ["diff", "--name-only", "HEAD"], {
@@ -217,12 +220,12 @@ module.exports = async function automate({ github, context, core }) {
         !["success", "neutral", "skipped"].includes(check.conclusion),
     )
   )
-    return;
+    return false;
   const { data: statuses } = await github.rest.repos.getCombinedStatusForRef({
     ...repo,
     ref: pr.head.sha,
   });
-  if (statuses.statuses.length && statuses.state !== "success") return;
+  if (statuses.statuses.length && statuses.state !== "success") return false;
   const { data: current } = await github.rest.pulls.get({
     ...repo,
     pull_number: pr.number,
@@ -243,10 +246,10 @@ module.exports = async function automate({ github, context, core }) {
     current.mergeable !== true ||
     current.mergeable_state !== "clean"
   ) {
-    core.info(
+    log(
       "PR is not cleanly mergeable or repository protections require review.",
     );
-    return;
+    return false;
   }
   const { data: result } = await github.rest.pulls.merge({
     ...repo,
@@ -255,9 +258,44 @@ module.exports = async function automate({ github, context, core }) {
     merge_method: "squash",
   });
   assert(result.merged, result.message);
-  core.info(
-    `Merged verified PR #${pr.number}; the App-authored merge triggers the release workflow.`,
-  );
+  log("Merged; the App-authored merge triggers the release workflow.");
+  return true;
+}
+
+module.exports = async function automate({ github, context, core }) {
+  const repo = context.repo;
+  if (!isTrustedTrigger(context.payload.workflow_run, repo)) return;
+  // Sweep every candidate, not just the triggering PR: the concurrency group
+  // cancels superseded pending runs, so their events would otherwise be lost.
+  const isRelease = (pr) => Number(pr.user.login !== "dependabot[bot]");
+  const prs = (
+    await github.paginate(github.rest.pulls.list, {
+      ...repo,
+      state: "open",
+      base: "main",
+      per_page: 100,
+    })
+  )
+    .filter((pr) => isCandidate(pr, repo))
+    // Dependency PRs first (oldest first) so they join the pending release.
+    .sort((a, b) => isRelease(a) - isRelease(b) || a.number - b.number);
+  const { data: ref } = await github.rest.git.getRef({
+    ...repo,
+    ref: "heads/main",
+  });
+  const errors = [];
+  for (const pr of prs) {
+    try {
+      const args = { github, core, repo, pr, baseSha: ref.object.sha };
+      // The merge's push to main runs CI, which wakes the next sweep.
+      if (await processPullRequest(args)) break;
+    } catch (error) {
+      core.error(`PR #${pr.number}: ${error.message}`);
+      errors.push(error);
+    }
+  }
+  if (errors.length)
+    throw new AggregateError(errors, "Some PRs require manual review");
 };
 
 module.exports.latestSuccessful = latestSuccessful;
