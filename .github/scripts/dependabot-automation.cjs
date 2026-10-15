@@ -1,11 +1,11 @@
-const assert = require("node:assert/strict");
-const { execFileSync } = require("node:child_process");
-const { readFileSync, existsSync, readdirSync } = require("node:fs");
-const { changeset, validateManifest } = require("./dependency-policy.cjs");
+const assert = require('node:assert/strict');
+const { execFileSync } = require('node:child_process');
+const { readFileSync, existsSync, readdirSync } = require('node:fs');
+const { changeset, validateManifest } = require('./dependency-policy.cjs');
 
 const workflowPaths = [
-  ".github/workflows/ci.yml",
-  ".github/workflows/dependency-safety.yml",
+  '.github/workflows/ci.yml',
+  '.github/workflows/dependency-safety.yml',
 ];
 
 function latestSuccessful(runs, path, sha) {
@@ -14,24 +14,24 @@ function latestSuccessful(runs, path, sha) {
       (run) =>
         run.path === path &&
         run.head_sha === sha &&
-        run.event === "pull_request",
+        run.event === 'pull_request',
     )
     .sort((a, b) => b.id - a.id);
   return (
     matching.length > 0 &&
-    matching[0].status === "completed" &&
-    matching[0].conclusion === "success"
+    matching[0].status === 'completed' &&
+    matching[0].conclusion === 'success'
   );
 }
 
 function validateFiles(files, number) {
   const path = `.changeset/dependabot-${number}.md`;
-  assert(files.length && files.length <= 3, "Unexpected PR file scope");
+  assert(files.length && files.length <= 3, 'Unexpected PR file scope');
   for (const file of files) {
     assert(
-      (["package.json", "pnpm-lock.yaml"].includes(file.filename) &&
-        file.status === "modified") ||
-        (file.filename === path && file.status === "added"),
+      (['package.json', 'pnpm-lock.yaml'].includes(file.filename) &&
+        file.status === 'modified') ||
+        (file.filename === path && file.status === 'added'),
       `Manual review required for ${file.filename}`,
     );
   }
@@ -47,67 +47,71 @@ function isDependencyBatch(entries) {
   );
 }
 
-module.exports = async function automate({ github, context, core }) {
-  const repo = context.repo;
-  const run = context.payload.workflow_run;
-  if (
-    run.event !== "pull_request" ||
-    run.head_repository?.full_name !== `${repo.owner}/${repo.repo}`
-  )
-    return;
-  const candidates = await github.paginate(github.rest.pulls.list, {
-    ...repo,
-    state: "open",
-    base: "main",
-    per_page: 100,
-  });
-  const pr = candidates.find(
-    (item) =>
-      item.head.sha === run.head_sha &&
-      (item.user.login === "dependabot[bot]" ||
-        (item.head.ref === "changeset-release/main" &&
-          item.user.type === "Bot")),
+// Completions only wake the controller; it re-verifies every PR itself.
+function isTrustedTrigger(run, repo) {
+  return (
+    run?.head_repository?.full_name === `${repo.owner}/${repo.repo}` &&
+    (run.event === 'pull_request' ||
+      (run.event === 'push' && run.head_branch === 'main'))
   );
-  if (
-    !pr ||
-    pr.draft ||
-    pr.head.repo?.full_name !== `${repo.owner}/${repo.repo}`
-  )
-    return;
+}
 
+function isCandidate(pr, repo) {
+  return (
+    !pr.draft &&
+    pr.head.repo?.full_name === `${repo.owner}/${repo.repo}` &&
+    (pr.user.login === 'dependabot[bot]' ||
+      (pr.head.ref === 'changeset-release/main' && pr.user.type === 'Bot'))
+  );
+}
+
+// Returns true after merging: main moved, so the rest wait for the next sweep.
+async function processPullRequest({ github, core, repo, pr, baseSha }) {
+  const log = (message) => core.info(`PR #${pr.number}: ${message}`);
   const runs = await github.paginate(
     github.rest.actions.listWorkflowRunsForRepo,
-    { ...repo, head_sha: pr.head.sha, event: "pull_request", per_page: 100 },
+    { ...repo, head_sha: pr.head.sha, event: 'pull_request', per_page: 100 },
   );
-  const dependency = pr.user.login === "dependabot[bot]";
+  const dependency = pr.user.login === 'dependabot[bot]';
   const required = dependency ? workflowPaths : workflowPaths.slice(0, 1);
   if (!required.every((path) => latestSuccessful(runs, path, pr.head.sha))) {
-    core.info(
-      "Waiting for successful CI/security checks on this exact head commit.",
-    );
-    return;
-  }
-  const { data: ref } = await github.rest.git.getRef({
-    ...repo,
-    ref: "heads/main",
-  });
-  const baseSha = ref.object.sha;
-  const { data: comparison } = await github.rest.repos.compareCommits({
-    ...repo,
-    base: baseSha,
-    head: pr.head.sha,
-  });
-  if (comparison.status !== "ahead") {
-    core.info(
-      "PR must include current main. Ask Dependabot to rebase, then rerun the checks.",
-    );
-    return;
+    log('Waiting for successful CI/security checks on this exact head commit.');
+    return false;
   }
   const files = await github.paginate(github.rest.pulls.listFiles, {
     ...repo,
     pull_number: pr.number,
     per_page: 100,
   });
+  if (dependency) validateFiles(files, pr.number);
+  const { data: comparison } = await github.rest.repos.compareCommits({
+    ...repo,
+    base: baseSha,
+    head: pr.head.sha,
+  });
+  if (comparison.status !== 'ahead') {
+    if (!dependency) {
+      log('Waiting for Changesets to rebuild the release PR on current main.');
+      return false;
+    }
+    // Strict branch protection requires current main. The skip marker keeps
+    // Dependabot able to rebase over this commit when its lockfile conflicts.
+    try {
+      await github.rest.repos.merge({
+        ...repo,
+        base: pr.head.ref,
+        head: baseSha,
+        commit_message: `chore: merge main into Dependabot PR #${pr.number} [dependabot skip]`,
+      });
+      log('Merged current main; the new commit must pass fresh checks.');
+    } catch (error) {
+      core.warning(
+        `PR #${pr.number} could not be updated with main (${error.message}). ` +
+          'Dependabot rebases conflicting PRs itself; otherwise comment `@dependabot recreate`.',
+      );
+    }
+    return false;
+  }
   const getText = async (path, sha) => {
     const { data } = await github.rest.repos.getContent({
       ...repo,
@@ -115,19 +119,18 @@ module.exports = async function automate({ github, context, core }) {
       ref: sha,
     });
     assert(
-      data.type === "file" && data.encoding === "base64",
+      data.type === 'file' && data.encoding === 'base64',
       `Unsupported file: ${path}`,
     );
     return {
-      text: Buffer.from(data.content, "base64").toString("utf8"),
+      text: Buffer.from(data.content, 'base64').toString('utf8'),
       sha: data.sha,
     };
   };
 
   if (dependency) {
-    validateFiles(files, pr.number);
-    const before = JSON.parse((await getText("package.json", baseSha)).text);
-    const after = JSON.parse((await getText("package.json", pr.head.sha)).text);
+    const before = JSON.parse((await getText('package.json', baseSha)).text);
+    const after = JSON.parse((await getText('package.json', pr.head.sha)).text);
     validateManifest(before, after);
     const path = `.changeset/dependabot-${pr.number}.md`;
     const expected = changeset(pr.number);
@@ -140,64 +143,64 @@ module.exports = async function automate({ github, context, core }) {
       assert.equal(
         current.head.sha,
         pr.head.sha,
-        "PR changed during validation",
+        'PR changed during validation',
       );
       await github.rest.repos.createOrUpdateFileContents({
         ...repo,
         path,
         branch: pr.head.ref,
-        message: `chore: add changeset for Dependabot PR #${pr.number}`,
-        content: Buffer.from(expected).toString("base64"),
+        message: `chore: add changeset for Dependabot PR #${pr.number} [dependabot skip]`,
+        content: Buffer.from(expected).toString('base64'),
       });
-      core.info(
-        "Changeset added. Its new commit must pass fresh CI/security checks before merging.",
+      log(
+        'Changeset added. Its new commit must pass fresh CI/security checks before merging.',
       );
-      return;
+      return false;
     }
     assert.equal(
       (await getText(path, pr.head.sha)).text,
       expected,
-      "Unexpected bot changeset contents",
+      'Unexpected bot changeset contents',
     );
   } else {
     // Auto-release only dependency-only batches, never a manually authored changeset.
     assert.equal(
-      execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
+      execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
       baseSha,
-      "Trusted checkout is stale",
+      'Trusted checkout is stale',
     );
-    const pending = readdirSync(".changeset").filter(
-      (name) => name.endsWith(".md") && name !== "README.md",
+    const pending = readdirSync('.changeset').filter(
+      (name) => name.endsWith('.md') && name !== 'README.md',
     );
     if (
       !isDependencyBatch(
         pending.map((name) => ({
           name,
-          text: readFileSync(`.changeset/${name}`, "utf8"),
+          text: readFileSync(`.changeset/${name}`, 'utf8'),
         })),
       )
     ) {
-      core.info("Release contains manual changesets; leaving it for review.");
-      return;
+      log('Release contains manual changesets; leaving it for review.');
+      return false;
     }
-    execFileSync("pnpm", ["run", "version:packages"], { stdio: "inherit" });
-    const expectedPaths = execFileSync("git", ["diff", "--name-only", "HEAD"], {
-      encoding: "utf8",
+    execFileSync('pnpm', ['run', 'version:packages'], { stdio: 'inherit' });
+    const expectedPaths = execFileSync('git', ['diff', '--name-only', 'HEAD'], {
+      encoding: 'utf8',
     })
       .trim()
-      .split("\n")
+      .split('\n')
       .sort();
     assert.deepEqual(
       files.map((file) => file.filename).sort(),
       expectedPaths,
-      "Unexpected release files",
+      'Unexpected release files',
     );
     for (const file of files) {
-      if (!existsSync(file.filename)) assert.equal(file.status, "removed");
+      if (!existsSync(file.filename)) assert.equal(file.status, 'removed');
       else
         assert.equal(
           (await getText(file.filename, pr.head.sha)).text,
-          readFileSync(file.filename, "utf8"),
+          readFileSync(file.filename, 'utf8'),
           `Unexpected release content: ${file.filename}`,
         );
     }
@@ -207,57 +210,92 @@ module.exports = async function automate({ github, context, core }) {
   const checks = await github.paginate(github.rest.checks.listForRef, {
     ...repo,
     ref: pr.head.sha,
-    filter: "latest",
+    filter: 'latest',
     per_page: 100,
   });
   if (
     checks.some(
       (check) =>
-        check.status !== "completed" ||
-        !["success", "neutral", "skipped"].includes(check.conclusion),
+        check.status !== 'completed' ||
+        !['success', 'neutral', 'skipped'].includes(check.conclusion),
     )
   )
-    return;
+    return false;
   const { data: statuses } = await github.rest.repos.getCombinedStatusForRef({
     ...repo,
     ref: pr.head.sha,
   });
-  if (statuses.statuses.length && statuses.state !== "success") return;
+  if (statuses.statuses.length && statuses.state !== 'success') return false;
   const { data: current } = await github.rest.pulls.get({
     ...repo,
     pull_number: pr.number,
   });
   const { data: currentBase } = await github.rest.git.getRef({
     ...repo,
-    ref: "heads/main",
+    ref: 'heads/main',
   });
-  assert.equal(current.head.sha, pr.head.sha, "PR changed during validation");
+  assert.equal(current.head.sha, pr.head.sha, 'PR changed during validation');
   assert.equal(
     currentBase.object.sha,
     baseSha,
-    "main changed during validation",
+    'main changed during validation',
   );
   if (
-    current.state !== "open" ||
+    current.state !== 'open' ||
     current.draft ||
     current.mergeable !== true ||
-    current.mergeable_state !== "clean"
+    current.mergeable_state !== 'clean'
   ) {
-    core.info(
-      "PR is not cleanly mergeable or repository protections require review.",
+    log(
+      'PR is not cleanly mergeable or repository protections require review.',
     );
-    return;
+    return false;
   }
   const { data: result } = await github.rest.pulls.merge({
     ...repo,
     pull_number: pr.number,
     sha: pr.head.sha,
-    merge_method: "squash",
+    merge_method: 'squash',
   });
   assert(result.merged, result.message);
-  core.info(
-    `Merged verified PR #${pr.number}; the App-authored merge triggers the release workflow.`,
-  );
+  log('Merged; the App-authored merge triggers the release workflow.');
+  return true;
+}
+
+module.exports = async function automate({ github, context, core }) {
+  const repo = context.repo;
+  if (!isTrustedTrigger(context.payload.workflow_run, repo)) return;
+  // Sweep every candidate, not just the triggering PR: the concurrency group
+  // cancels superseded pending runs, so their events would otherwise be lost.
+  const isRelease = (pr) => Number(pr.user.login !== 'dependabot[bot]');
+  const prs = (
+    await github.paginate(github.rest.pulls.list, {
+      ...repo,
+      state: 'open',
+      base: 'main',
+      per_page: 100,
+    })
+  )
+    .filter((pr) => isCandidate(pr, repo))
+    // Dependency PRs first (oldest first) so they join the pending release.
+    .sort((a, b) => isRelease(a) - isRelease(b) || a.number - b.number);
+  const { data: ref } = await github.rest.git.getRef({
+    ...repo,
+    ref: 'heads/main',
+  });
+  const errors = [];
+  for (const pr of prs) {
+    try {
+      const args = { github, core, repo, pr, baseSha: ref.object.sha };
+      // The merge's push to main runs CI, which wakes the next sweep.
+      if (await processPullRequest(args)) break;
+    } catch (error) {
+      core.error(`PR #${pr.number}: ${error.message}`);
+      errors.push(error);
+    }
+  }
+  if (errors.length)
+    throw new AggregateError(errors, 'Some PRs require manual review');
 };
 
 module.exports.latestSuccessful = latestSuccessful;
