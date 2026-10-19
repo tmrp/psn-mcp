@@ -1,5 +1,13 @@
 # psn-mcp
 
+## 0.5.9
+
+### Patch Changes
+
+- [#84](https://github.com/tmrp/psn-mcp/pull/84) [`a2d2ad0`](https://github.com/tmrp/psn-mcp/commit/a2d2ad0a5525cb9eba9d492e3baddcd20f852d67) Thanks [@dependabot](https://github.com/apps/dependabot)! - Update npm dependencies from Dependabot PR [#84](https://github.com/tmrp/psn-mcp/issues/84).
+
+- [#85](https://github.com/tmrp/psn-mcp/pull/85) [`21f877d`](https://github.com/tmrp/psn-mcp/commit/21f877df1ffc617cf82a6184ff30b1df30cb77e4) Thanks [@dependabot](https://github.com/apps/dependabot)! - Update npm dependencies from Dependabot PR [#85](https://github.com/tmrp/psn-mcp/issues/85).
+
 ## 0.5.8
 
 ### Patch Changes
